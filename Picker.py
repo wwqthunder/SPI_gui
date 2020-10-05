@@ -90,40 +90,41 @@ class Picker(QtWidgets.QWidget):
 
     @QtCore.pyqtSlot(int,str,int)
     def additem(self,index,name,data):
-        _itemButton = []
-        self.trueIndex.append(index)
-        nitem = len(self.itemButton)
-        itembox = QtWidgets.QHBoxLayout()
-        itembox.setSpacing(0)
-        #itembox.addWidget(QtWidgets.QLabel(str(nitem+1) + ". " + name+": "))
+        if index not in self.trueIndex:
+            _itemButton = []
+            self.trueIndex.append(index)
+            nitem = len(self.itemButton)
+            itembox = QtWidgets.QHBoxLayout()
+            itembox.setSpacing(0)
+            #itembox.addWidget(QtWidgets.QLabel(str(nitem+1) + ". " + name+": "))
 
-        for _ in range(data):
-            button = QtWidgets.QPushButton(str(_))
-            button.clicked.connect(lambda *args, nitem=nitem, nbit = _: self.handleBitButtonClicked(nitem, nbit))
-            button.setFixedSize(QtCore.QSize(40, 40))
-            _itemButton.append(button)
-        for _ in reversed(_itemButton):
-            itembox.addWidget(_,alignment=QtCore.Qt.AlignLeft)
+            for _ in range(data):
+                button = QtWidgets.QPushButton(str(_))
+                button.clicked.connect(lambda *args, nitem=nitem, nbit = _: self.handleBitButtonClicked(nitem, nbit))
+                button.setFixedSize(QtCore.QSize(40, 40))
+                _itemButton.append(button)
+            for _ in reversed(_itemButton):
+                itembox.addWidget(_,alignment=QtCore.Qt.AlignLeft)
 
-        button_reset = QtWidgets.QPushButton("Reset")
-        button_reset.setFixedSize(QtCore.QSize(80, 40))
-        button_reset.clicked.connect(lambda *args, nitem=nitem: self.handleBitResetClicked(nitem))
-        itembox.addWidget(button_reset,alignment=QtCore.Qt.AlignLeft)
-        self.resetButton.append(button_reset)
-        button_delete = QtWidgets.QPushButton("Delete")
-        button_delete.setFixedSize(QtCore.QSize(80, 40))
-        button_delete.clicked.connect(lambda *args, nitem=nitem: self.handleBitDeleteClicked(nitem))
-        itembox.addWidget(button_delete, alignment=QtCore.Qt.AlignLeft)
-        self.deleteButton.append(button_delete)
+            button_reset = QtWidgets.QPushButton("Reset")
+            button_reset.setFixedSize(QtCore.QSize(80, 40))
+            button_reset.clicked.connect(lambda *args, nitem=nitem: self.handleBitResetClicked(nitem))
+            itembox.addWidget(button_reset,alignment=QtCore.Qt.AlignLeft)
+            self.resetButton.append(button_reset)
+            button_delete = QtWidgets.QPushButton("Delete")
+            button_delete.setFixedSize(QtCore.QSize(80, 40))
+            button_delete.clicked.connect(lambda *args, nitem=nitem: self.handleBitDeleteClicked(nitem))
+            itembox.addWidget(button_delete, alignment=QtCore.Qt.AlignLeft)
+            self.deleteButton.append(button_delete)
 
-        self.itemButton.append(_itemButton)
-        #_layout = QtWidgets.QHBoxLayout()
-        _label = QtWidgets.QLabel(str(nitem+1) + ". " + str(index+1) + "." + str(name)+": ")
-        self.labelList.append(_label)
-        #_layout.addWidget(_label)
-        #self.nameList.addLayout(_layout)
-        #self.itemList.addLayout(itembox)
-        self.itemForm.addRow(_label, itembox)
+            self.itemButton.append(_itemButton)
+            #_layout = QtWidgets.QHBoxLayout()
+            _label = QtWidgets.QLabel(str(nitem+1) + ". " + str(index+1) + "." + str(name)+": ")
+            self.labelList.append(_label)
+            #_layout.addWidget(_label)
+            #self.nameList.addLayout(_layout)
+            #self.itemList.addLayout(itembox)
+            self.itemForm.addRow(_label, itembox)
 
     @QtCore.pyqtSlot(int,int)
     def handleBitButtonClicked(self, nitem, nbit):
