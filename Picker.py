@@ -3,7 +3,9 @@ from PyQt5 import QtCore, QtGui, QtWidgets, sip
 
 
 class Picker(QtWidgets.QWidget):
-    PickerCall = QtCore.pyqtSignal(int,str,int)
+    # signal for test
+    #PickerCall = QtCore.pyqtSignal(int,str,int)
+    CloseSignal = QtCore.pyqtSignal()
     def __init__(self, parent=None):
         super(Picker, self).__init__(parent)
 
@@ -14,7 +16,7 @@ class Picker(QtWidgets.QWidget):
         self.deleteButton = []
         self.labelList = []
         self.trueIndex = []
-        self.PickerCall.connect(self.additem)
+        #self.PickerCall.connect(self.additem)
 
         self.resultbox = QtWidgets.QHBoxLayout()
         self.nameInput = QtWidgets.QLineEdit()
@@ -25,12 +27,15 @@ class Picker(QtWidgets.QWidget):
         buttonReset = QtWidgets.QPushButton("Reset")
         self.buttonPoint = QtWidgets.QPushButton(".")
         buttonBackspace = QtWidgets.QPushButton("<-")
+        buttonDelete = QtWidgets.QPushButton("Delete")
         buttonReset.setFixedSize(QtCore.QSize(80, 40))
         self.buttonPoint.setFixedSize(QtCore.QSize(80, 40))
         buttonBackspace.setFixedSize(QtCore.QSize(80, 40))
+        buttonDelete.setFixedSize(QtCore.QSize(80, 40))
         buttonReset.clicked.connect(self.resetAll)
         self.buttonPoint.clicked.connect(lambda *args, nitem = -1, nbit = -1: self.handleBitButtonClicked(nitem, nbit))
         buttonBackspace.clicked.connect(self.backspace)
+        buttonDelete.clicked.connect(self.deleteAll)
 
         self.buttonApply = QtWidgets.QPushButton("Apply")
         buttonCancel = QtWidgets.QPushButton("Cancel")
@@ -43,8 +48,9 @@ class Picker(QtWidgets.QWidget):
         buttonbox.addWidget(buttonReset, 2, 1)
         buttonbox.addWidget(self.buttonPoint, 0, 1)
         buttonbox.addWidget(buttonBackspace, 1, 1)
-        buttonbox.addWidget(self.buttonApply, 3, 0,QtCore.Qt.AlignBottom)
-        buttonbox.addWidget(buttonCancel, 3, 1,QtCore.Qt.AlignBottom)
+        buttonbox.addWidget(buttonDelete, 3, 1)
+        buttonbox.addWidget(self.buttonApply, 4, 0,QtCore.Qt.AlignBottom)
+        buttonbox.addWidget(buttonCancel, 4, 1,QtCore.Qt.AlignBottom)
 
         self.itemRes = QtWidgets.QHBoxLayout()
         self.itemRes.setSpacing(0)
@@ -96,7 +102,7 @@ class Picker(QtWidgets.QWidget):
             nitem = len(self.itemButton)
             itembox = QtWidgets.QHBoxLayout()
             itembox.setSpacing(0)
-            #itembox.addWidget(QtWidgets.QLabel(str(nitem+1) + ". " + name+": "))
+
 
             for _ in range(data):
                 button = QtWidgets.QPushButton(str(_))
@@ -105,6 +111,7 @@ class Picker(QtWidgets.QWidget):
                 _itemButton.append(button)
             for _ in reversed(_itemButton):
                 itembox.addWidget(_,alignment=QtCore.Qt.AlignLeft)
+            itembox.addStretch(1)
 
             button_reset = QtWidgets.QPushButton("Reset")
             button_reset.setFixedSize(QtCore.QSize(80, 40))
@@ -118,12 +125,8 @@ class Picker(QtWidgets.QWidget):
             self.deleteButton.append(button_delete)
 
             self.itemButton.append(_itemButton)
-            #_layout = QtWidgets.QHBoxLayout()
-            _label = QtWidgets.QLabel(str(nitem+1) + ". " + str(index+1) + "." + str(name)+": ")
+            _label = QtWidgets.QLabel(str(nitem+1) + ". " + str(index) + "." + str(name)+": ")
             self.labelList.append(_label)
-            #_layout.addWidget(_label)
-            #self.nameList.addLayout(_layout)
-            #self.itemList.addLayout(itembox)
             self.itemForm.addRow(_label, itembox)
 
     @QtCore.pyqtSlot(int,int)
@@ -190,7 +193,7 @@ class Picker(QtWidgets.QWidget):
         # reset
         self.handleBitResetClicked(nitem)
         # Clear itemForm
-        #GarbageBin = self.itemForm.itemAt(nitem, QtWidgets.QFormLayout.FieldRole)
+            #GarbageBin = self.itemForm.itemAt(nitem, QtWidgets.QFormLayout.FieldRole)
         self.itemForm.removeRow(nitem)
 
         # Clear itemButton
@@ -219,7 +222,7 @@ class Picker(QtWidgets.QWidget):
                     self.resButton[_].setText(str(item+1)+"."+str(bit))
 
     def apply(self):
-        #self.PickerCall.emit("FLL_INT[0:5]",10)
+        #self.PickerCall.emit(1,"FLL_INT[0:5]",1)
         pass
 
     def cancel(self):
@@ -236,12 +239,16 @@ class Picker(QtWidgets.QWidget):
             _ = self.itemBasket[-1]
             self.handleBitButtonClicked(_[0], _[1])
 
+    def deleteAll(self):
+        for _ in sorted(range(len(self.deleteButton)), reverse=True):
+            self.handleBitDeleteClicked(_)
+            self.backspace()
+
+    def closeEvent(self, event):
+        self.CloseSignal.emit()
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     w = Picker()
     w.show()
     sys.exit(app.exec_())
-
-
-

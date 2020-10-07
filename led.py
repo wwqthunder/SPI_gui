@@ -16,7 +16,7 @@ class MyLed(QtWidgets.QAbstractButton):
     def initUI(self):
         self.setMinimumSize(24, 24)
         self.setCheckable(True)
-        self.scaledSize = 1000.0    #为方便计算，将窗口短边值映射为1000
+        self.scaledSize = 1000.0
         self.setLedDefaultOption()
         self.ConnFlag = False
 
@@ -38,9 +38,9 @@ class MyLed(QtWidgets.QAbstractButton):
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.setPen(QPen(Qt.black, 1))
 
-        realSize = min(self.width(), self.height())                         #窗口的短边
-        painter.translate(self.width()/2.0, self.height()/2.0)              #原点平移到窗口中心
-        painter.scale(realSize/self.scaledSize, realSize/self.scaledSize)   #缩放，窗口的短边值映射为self.scaledSize
+        realSize = min(self.width(), self.height())
+        painter.translate(self.width()/2.0, self.height()/2.0)
+        painter.scale(realSize/self.scaledSize, realSize/self.scaledSize)
         gradient = QRadialGradient(QPointF(0, 0), self.scaledSize/2.0, QPointF(0, 0))
 
         for color, radius in [(self.colorBorderOut, self.radiusBorderOut),
