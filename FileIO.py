@@ -1,5 +1,4 @@
 import os
-import openpyxl
 import pandas as pd
 import numpy as np
 cols_headers = ["SS","Addr","Sel","Name","Vol_Max","Vol_Min","DataSize","EnbBits","BinR","DecR","VolR","BinW","DecW","VolW","Steps"]
@@ -17,6 +16,8 @@ def load(path):
     data.dropna(subset=['SS'], inplace=True)
     data["Addr"].replace('', np.nan, inplace=True)
     data.dropna(subset=['Addr'], inplace=True)
+    data['SS'] = data['SS'].astype('int')
+    data['Addr'] = data['Addr'].astype('int')
     #data = data.dropna(axis=0, subset=['SS'])
     #data = data.dropna(axis=0, subset=['Addr'])
     data.reset_index(drop=True, inplace=True)

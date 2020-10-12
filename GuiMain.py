@@ -38,11 +38,12 @@ def spi_write(add,data,size):
         print('Wr:' + str(data) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2]))
 
 
+
 # Main Control Table
 class LoadTable(QtWidgets.QTableWidget):
     SelectedTx = QtCore.pyqtSignal(int,str,int)
     def __init__(self,parent=None):
-        super(LoadTable, self).__init__(0,17,parent)
+        super(LoadTable, self).__init__(0,16,parent)
         self.data = pd.DataFrame()
         self.onLoading = False
         # Store button handle
@@ -51,8 +52,8 @@ class LoadTable(QtWidgets.QTableWidget):
         self.button_read_en = []
         self.button_write_en = []
         self.cols_headers = ["SS", "Addr", "Sel", "Name", "Vol_Max", "Vol_Min", "DataSize", "EnbBits", "BinR",
-                        "DecR", "VolR", "Read", "BinW", "DecW", "VolW", "Write", "Steps"]
-        self.data_headers = ["SS","Addr","Sel","Name","Vol_Max","Vol_Min","DataSize","EnbBits","BinR","DecR","VolR","BinW","DecW","VolW","Steps"]
+                        "DecR", "VolR", "Read", "BinW", "DecW", "VolW", "Write"]
+        self.data_headers = ["SS","Addr","Sel","Name","Vol_Max","Vol_Min","DataSize","EnbBits","BinR","DecR","VolR","BinW","DecW","VolW"]
         self.data = pd.DataFrame(columns = self.data_headers)
 
         self.setHorizontalHeaderLabels(self.cols_headers)
@@ -67,7 +68,10 @@ class LoadTable(QtWidgets.QTableWidget):
             "padding:4px;"
         "}")
         #self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
-
+        self.setColumnHidden(4,True)
+        self.setColumnHidden(5, True)
+        self.setColumnHidden(10, True)
+        self.setColumnHidden(14, True)
         #self.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.setColumnWidth(0, 20)
         self.setColumnWidth(1, 50)
@@ -85,7 +89,7 @@ class LoadTable(QtWidgets.QTableWidget):
         self.setColumnWidth(13, 60)
         self.setColumnWidth(14, 80)
         self.setColumnWidth(15, 60)
-        self.setColumnWidth(16, 30)
+        #self.setColumnWidth(16, 30)
         self.cellChanged.connect(self._cellclicked)
         self.itemSelectionChanged.connect(self._itemclicked)
 
@@ -96,7 +100,7 @@ class LoadTable(QtWidgets.QTableWidget):
         if self.onLoading is False and c not in [8,9,10]:
             self.onLoading = True
             text = it.text().replace(" ", "")
-            if c in [13,16]:
+            if c is 13:
                 if text.isdigit():
                     self.item(r, c).setData(QtCore.Qt.EditRole, int(text))
                 else:
@@ -120,10 +124,18 @@ class LoadTable(QtWidgets.QTableWidget):
             self.data.at[r,self.cols_headers[c]] = text
             # Bin Dec data sync
             if c is 13 and str(self.data.at[r,"EnbBits"]).isdigit():
-                _format = "0"+ str(self.data.at[r,"EnbBits"]) + "b"
-                _bin = format(int(text), _format)
-                self.data.at[r, self.cols_headers[12]] = _bin
-                self.setItem(r, 12, QtWidgets.QTableWidgetItem(_bin))
+                if int(self.data.at[r,"EnbBits"]) is not 0:
+                    _dec = int(text)
+                    _format = "0"+ str(self.data.at[r,"EnbBits"]) + "b"
+                    _bin = format(_dec, _format)
+                    self.data.at[r, self.cols_headers[12]] = _bin
+                    self.setItem(r, 12, QtWidgets.QTableWidgetItem(_bin))
+                    _vol = self.dec2voltage(self.data.at[r,"Vol_Max"],self.data.at[r,"Vol_Min"],_dec,self.data.at[r,"EnbBits"])
+                    if _vol is not None:
+                        self.data.at[r, self.cols_headers[14]] = _vol
+                        _temp = QtWidgets.QTableWidgetItem()
+                        _temp.setData(QtCore.Qt.EditRole,_vol)
+                        self.setItem(r, 14, _temp)
             elif c is 12:
                 _dec = int(text,2)
                 self.data.at[r, self.cols_headers[13]] = _dec
@@ -131,9 +143,27 @@ class LoadTable(QtWidgets.QTableWidget):
                 _temp.setData(QtCore.Qt.EditRole, _dec)
                 self.setItem(r, 13, _temp)
                 if str(self.data.at[r,"EnbBits"]).isdigit():
+                    if int(self.data.at[r,"EnbBits"]) is not 0:
+                        _format = "0" + str(self.data.at[r, "EnbBits"]) + "b"
+                        _bin = format(_dec, _format)
+                        self.item(r, 12).setData(QtCore.Qt.EditRole, _bin)
+                _vol = self.dec2voltage(self.data.at[r,"Vol_Max"],self.data.at[r,"Vol_Min"],_dec,self.data.at[r,"EnbBits"])
+                if _vol is not None:
+                    self.data.at[r, self.cols_headers[14]] = _vol
+                    _temp = QtWidgets.QTableWidgetItem()
+                    _temp.setData(QtCore.Qt.EditRole,_vol)
+                    self.setItem(r, 14, _temp)
+            elif c is 14:
+                _dec = self.voltage2dec(self.data.at[r,"Vol_Max"],self.data.at[r,"Vol_Min"],text,self.data.at[r,"EnbBits"])
+                if _dec is not None:
+                    self.data.at[r, self.cols_headers[13]] = _dec
+                    _temp = QtWidgets.QTableWidgetItem()
+                    _temp.setData(QtCore.Qt.EditRole, _dec)
+                    self.setItem(r, 13, _temp)
                     _format = "0" + str(self.data.at[r, "EnbBits"]) + "b"
                     _bin = format(_dec, _format)
-                    self.item(r, 12).setData(QtCore.Qt.EditRole, _bin)
+                    self.data.at[r, self.cols_headers[12]] = _bin
+                    self.setItem(r, 12, QtWidgets.QTableWidgetItem(_bin))
             else:
                 pass
             # Status Update
@@ -211,7 +241,6 @@ class LoadTable(QtWidgets.QTableWidget):
                 _temp.setData(QtCore.Qt.EditRole, row["DecW"])
                 self.setItem(index, 13, _temp)
                 self.setItem(index, 14, QtWidgets.QTableWidgetItem(str(row["VolW"])))
-                self.setItem(index, 16, QtWidgets.QTableWidgetItem(str(row["Steps"])))
 
                 button_read = QtWidgets.QPushButton('Read')
                 button_write = QtWidgets.QPushButton('Write')
@@ -235,10 +264,10 @@ class LoadTable(QtWidgets.QTableWidget):
         if len(self.selectedIndexes()) is 0:
             rowcount = self.rowCount()
             if rowcount is 0:
-                newRowSeries = pd.Series([0, 0, 0, "", 1.0, 0.0, 0, 0, "", "", "", "", "", "", ""],index = self.data_headers)
+                newRowSeries = pd.Series([0, 0, 0, "", 1.0, 0.0, 0, 0, "", "", "", "", "", ""],index = self.data_headers)
             else:
                 newRowSeries = self.data.iloc[-1]
-                newRowSeries.loc[["Name","BinR","DecR","VolR","BinW","DecW","VolW","Steps"]] = ""
+                newRowSeries["Name","BinR","DecR","VolR","BinW","DecW","VolW"] = ""
                 addr = newRowSeries["Addr"]
                 sel = newRowSeries["Sel"]
                 size = newRowSeries["DataSize"]
@@ -256,7 +285,7 @@ class LoadTable(QtWidgets.QTableWidget):
         else:
             rowcount = self.selectedIndexes()[-1].row() + 1
             newRowSeries = self.data.iloc[rowcount-1]
-            newRowSeries.loc[["Name", "BinR", "DecR", "VolR", "BinW", "DecW", "VolW","Steps"]] = ""
+            newRowSeries.loc[["Name", "BinR", "DecR", "VolR", "BinW", "DecW", "VolW"]] = ""
             sel = newRowSeries["Sel"]
             size = newRowSeries["DataSize"]
             en = newRowSeries["EnbBits"]
@@ -374,6 +403,7 @@ class LoadTable(QtWidgets.QTableWidget):
         _temp.setData(QtCore.Qt.DisplayRole, int(res))
         _temp.setFlags(QtCore.Qt.ItemIsEnabled)
         self.setItem(r, 9, _temp)
+
         _format = "0" + str(nBits) + "b"
         _bin = format(int(res), _format)
         self.data.at[r, "BinR"] = _bin
@@ -381,6 +411,13 @@ class LoadTable(QtWidgets.QTableWidget):
         _temp.setData(QtCore.Qt.DisplayRole, _bin)
         _temp.setFlags(QtCore.Qt.ItemIsEnabled)
         self.setItem(r, 8, _temp)
+
+        _vol = self.dec2voltage(self.data.at[r,"Vol_Max"],self.data.at[r,"Vol_Min"],res,self.data.at[r,"EnbBits"])
+        if _vol is not None:
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.DisplayRole, _vol)
+            _temp.setFlags(QtCore.Qt.ItemIsEnabled)
+            self.setItem(r, 10, _temp)
 
 
     @QtCore.pyqtSlot(int)
@@ -405,6 +442,40 @@ class LoadTable(QtWidgets.QTableWidget):
         for _ in range(len(self.button_write)):
             self.button_write[_].setEnabled(SPIConnFlag and self.button_write_en[_])
 
+    def dec2voltage(self,Volmax,Volmin,dec,nbits):
+        try:
+            Volmax = float(Volmax)
+            Volmin = float(Volmin)
+            dec = float(dec)
+            nbits = float(nbits)
+        except Exception as e:
+            return None
+        if nbits == 0:
+            return None
+        voltage = (Volmax - Volmin) * dec/(2**nbits-1) + Volmin
+        if voltage > Volmax:
+            voltage = Volmax
+        elif voltage < Volmin:
+            voltage = Volmin
+        return voltage
+
+    def voltage2dec(self, Volmax, Volmin, Vol, nbits):
+        try:
+            Volmax = float(Volmax)
+            Volmin = float(Volmin)
+            Vol = float(Vol)
+            nbits = float(nbits)
+        except Exception as e:
+            return None
+        if Volmax == Volmin:
+            return None
+        dec = (2**nbits-1) * (Vol - Volmin) / (Volmax - Volmin)
+        if dec > (2**nbits-1):
+            dec = (2**nbits-1)
+        elif dec < 0:
+            dec = 0
+        return int(round(dec))
+
 
 class ShortCutList(QtWidgets.QTableWidget):
     Tx = QtCore.pyqtSignal(bool,int)
@@ -419,9 +490,9 @@ class ShortCutList(QtWidgets.QTableWidget):
         self.data = pd.DataFrame(columns=["Name","Range","Bin","Dec"])
         self.onLoading = False
         self.setColumnWidth(0, 100)
-        self.setColumnWidth(1, 60)
-        self.setColumnWidth(2, 60)
-        self.setColumnWidth(3, 60)
+        self.setColumnWidth(1, 80)
+        self.setColumnWidth(2, 80)
+        self.setColumnWidth(3, 80)
         self.setColumnWidth(4, 60)
         self.setColumnWidth(5, 60)
 
@@ -520,13 +591,15 @@ class ShortCutList(QtWidgets.QTableWidget):
     def removerow(self):
         rows = set()
         for index in self.selectedIndexes():
-            rows.add(index.row())
+            rows.add(index.row()-1)
+        if -1 in rows:
+            rows.remove(-1)
 
         if len(rows) > 0:
             for row in sorted(rows, reverse=True):
-                self.removeRow(row)
-                del self.button_read[row]
-                del self.button_write[row]
+                self.removeRow(row+1)
+                del self.button_read[row+1]
+                del self.button_write[row+1]
                 del self.ReadData[row]
                 del self.ReadList[row]
 
@@ -534,8 +607,8 @@ class ShortCutList(QtWidgets.QTableWidget):
             self.data.reset_index(drop=True, inplace=True)
 
             rows = sorted(rows)
-            if rows[0] < len(self.button_read):
-                for _ in range(rows[0], len(self.button_read)):
+            if rows[0]+1 < len(self.button_read):
+                for _ in range(rows[0]+1, len(self.button_read)):
                     self.button_write[_].clicked.disconnect()
                     self.button_write[_].clicked.connect(lambda *args, rowcount=_: self.handleWriteRunClicked(rowcount))
                     self.button_read[_].clicked.disconnect()
@@ -606,11 +679,15 @@ class MainWindow(QtWidgets.QWidget):
         self.lock_button = QtWidgets.QPushButton("Lock")
         self.lock_button.setFixedSize(QtCore.QSize(100, 30))
         self.lock_button.clicked.connect(self.lock_switch)
+        self.vol_button = QtWidgets.QPushButton("Show Voltage")
+        self.vol_button.setFixedSize(QtCore.QSize(120, 30))
+        self.vol_button.clicked.connect(self.voltageModeSwitch)
 
         button_layout1 = QtWidgets.QHBoxLayout()
         button_layout1.addWidget(self.add_button)
         button_layout1.addWidget(self.delete_button)
         button_layout1.addWidget(self.lock_button)
+        button_layout1.addWidget(self.vol_button)
         button_layout1.addStretch(1)
         button_box1 = QtWidgets.QGroupBox("Main Table")
         button_box1.setLayout(button_layout1)
@@ -634,14 +711,14 @@ class MainWindow(QtWidgets.QWidget):
         button_box2.setLayout(button_layout2)
 
         button_layout = QtWidgets.QHBoxLayout()
-        button_layout.addWidget(button_box1,3)
-        button_layout.addWidget(button_box2,1)
+        button_layout.addWidget(button_box1,7)
+        button_layout.addWidget(button_box2,3)
 
 
         tablehbox = QtWidgets.QHBoxLayout()
-        tablehbox.setContentsMargins(10, 10, 10, 10)
-        tablehbox.addWidget(self.table,3)
-        tablehbox.addWidget(self.list,1)
+        #tablehbox.setContentsMargins(10, 10, 10, 10)
+        tablehbox.addWidget(self.table,7)
+        tablehbox.addWidget(self.list,3)
 
         self.combox_clk = QtWidgets.QComboBox(self)
         self.combox_clk.addItems(["25", "32", "40", "50", "80", "100", "125", "160", "200", "250", "400", "500", "625", "800", "1000", "1250", "2500", "3125", "4000", "5000", "6250", "10000", "12500", "20000", "25000", "33330", "50000"])
@@ -693,6 +770,7 @@ class MainWindow(QtWidgets.QWidget):
 
         self.setWindowTitle('SPI GUI for NI845x')
         self.setWindowIcon(QtGui.QIcon('tokyotech.ico'))
+
     @QtCore.pyqtSlot()
     def PickerCaller(self):
         if self.picker is not None:
@@ -877,6 +955,20 @@ class MainWindow(QtWidgets.QWidget):
             self.list.button_update()
             ni8452.ni845xSpiConfigurationClose()
             ni8452.ni845xClose()
+
+    def voltageModeSwitch(self):
+        if self.table.isColumnHidden(4):
+            self.table.setColumnHidden(4, False)
+            self.table.setColumnHidden(5, False)
+            self.table.setColumnHidden(10, False)
+            self.table.setColumnHidden(14, False)
+            self.vol_button.setText("Hide Voltage")
+        else:
+            self.table.setColumnHidden(4, True)
+            self.table.setColumnHidden(5, True)
+            self.table.setColumnHidden(10, True)
+            self.table.setColumnHidden(14, True)
+            self.vol_button.setText("Show Voltage")
 
     def closeEvent(self, event):
         if self.led.ConnFlag is True:

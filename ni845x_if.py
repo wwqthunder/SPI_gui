@@ -1,5 +1,6 @@
 import ctypes as c
 import time
+import sys
 
 DEV_SIZE = 256
 MAX_SIZE = 1024
@@ -15,9 +16,13 @@ class ni845x_if:
         self.status_code = c.c_ulong(0)
         self.device_handle = 0
         self.spi_handle = 0
+        self.flag64 = sys.maxsize > 2 ** 32
         self.dll_location = "Ni845x.dll"
         try:
-            self.i2c = c.cdll.LoadLibrary(self.dll_location)
+            if self.flag64:
+                self.i2c = c.cdll.LoadLibrary(self.dll_location)
+            else:
+                self.i2c = c.windll.LoadLibrary(self.dll_location)
         except Exception as e:
             print(e)
 
@@ -28,7 +33,10 @@ class ni845x_if:
         :return: name of first device
         """
         self.first_device = c.create_string_buffer(DEV_SIZE)#ctypes.create_string_buffer(DEV_SIZE)
-        self.find_device_handle = c.c_uint64(0)
+        if self.flag64:
+            self.find_device_handle = c.c_uint64(0)
+        else:
+            self.find_device_handle = c.c_uint32(0)
         number_found = c.c_uint32(0)
 
 #        self.status_code = self.i2c.ni845xFindDevice(c.byref(self.first_device), c.byref(self.find_device_handle), c.byref(number_found))
@@ -46,7 +54,10 @@ class ni845x_if:
         :param resource_name: name of the resource
         :return:device handle
         """
-        self.device_handle = c.c_uint64(0)
+        if self.flag64:
+            self.device_handle = c.c_uint64(0)
+        else:
+            self.device_handle = c.c_uint32(0)
 
         returnValue = self.i2c.ni845xOpen(c.byref(self.first_device), c.byref(self.device_handle))
         print("self.device_handle", hex((self.device_handle.value)))
@@ -105,7 +116,11 @@ class ni845x_if:
         void ni845xSpiConfigurationOpen  (NiHandle DeviceHandle);
         :return:None
         """
-        self.spi_handle = c.c_uint64(0)
+        if self.flag64:
+            self.spi_handle = c.c_uint64(0)
+        else:
+            self.spi_handle = c.c_uint32(0)
+
         returnValue = self.i2c.ni845xSpiConfigurationOpen(c.byref(self.spi_handle))
         print("self.spi_handle", self.spi_handle)
         print("Return values of ni845xSpiConfigurationOpen: ", returnValue)
