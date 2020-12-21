@@ -22,8 +22,8 @@ def spi_read(add,size):
     else:
         cmd = 1
         ret = ni8452.ni845xSpiWriteRead([((cmd << 5) + (add >> 3)) % 256, (add << 5) % 256, 0])
-        print("Addr:" + str(add) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2]))
-        return ((ret[1] % 32) * 256 + ret[2])
+        print("Addr:" + str(add) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2] % 256))
+        return ((ret[1] % 32) * 256 + ret[2] % 256)
 
 def spi_write(add,data,size):
     data = np.int(data)
@@ -35,7 +35,7 @@ def spi_write(add,data,size):
     else:
         cmd = 5
         ret = ni8452.ni845xSpiWriteRead([((cmd << 5) + (add >> 3)) % 256, ((add << 5) + (data >> 8)) % 256, data % 256])
-        print('Wr:' + str(data) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2]))
+        print('Wr:' + str(data) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2] % 256))
 
 
 
@@ -51,9 +51,9 @@ class LoadTable(QtWidgets.QTableWidget):
         self.button_write = []
         self.button_read_en = []
         self.button_write_en = []
-        self.cols_headers = ["SS", "Addr", "Sel", "Name", "Vol_Max", "Vol_Min", "DataSize", "EnbBits", "BinR",
+        self.cols_headers = ["SS", "Addr", "Sel", "Name", "VolMax", "VolMin", "DataSize", "EnbBits", "BinR",
                         "DecR", "VolR", "Read", "BinW", "DecW", "VolW", "Write"]
-        self.data_headers = ["SS","Addr","Sel","Name","Vol_Max","Vol_Min","DataSize","EnbBits","BinR","DecR","VolR","BinW","DecW","VolW"]
+        self.data_headers = ["SS","Addr","Sel","Name","VolMax","VolMin","DataSize","EnbBits","BinR","DecR","VolR","BinW","DecW","VolW"]
         self.data = pd.DataFrame(columns = self.data_headers)
 
         self.setHorizontalHeaderLabels(self.cols_headers)
@@ -130,7 +130,7 @@ class LoadTable(QtWidgets.QTableWidget):
                     _bin = format(_dec, _format)
                     self.data.at[r, self.cols_headers[12]] = _bin
                     self.setItem(r, 12, QtWidgets.QTableWidgetItem(_bin))
-                    _vol = self.dec2voltage(self.data.at[r,"Vol_Max"],self.data.at[r,"Vol_Min"],_dec,self.data.at[r,"EnbBits"])
+                    _vol = self.dec2voltage(self.data.at[r,"VolMax"],self.data.at[r,"VolMin"],_dec,self.data.at[r,"EnbBits"])
                     if _vol is not None:
                         self.data.at[r, self.cols_headers[14]] = _vol
                         _temp = QtWidgets.QTableWidgetItem()
@@ -147,14 +147,14 @@ class LoadTable(QtWidgets.QTableWidget):
                         _format = "0" + str(self.data.at[r, "EnbBits"]) + "b"
                         _bin = format(_dec, _format)
                         self.item(r, 12).setData(QtCore.Qt.EditRole, _bin)
-                _vol = self.dec2voltage(self.data.at[r,"Vol_Max"],self.data.at[r,"Vol_Min"],_dec,self.data.at[r,"EnbBits"])
+                _vol = self.dec2voltage(self.data.at[r,"VolMax"],self.data.at[r,"VolMin"],_dec,self.data.at[r,"EnbBits"])
                 if _vol is not None:
                     self.data.at[r, self.cols_headers[14]] = _vol
                     _temp = QtWidgets.QTableWidgetItem()
                     _temp.setData(QtCore.Qt.EditRole,_vol)
                     self.setItem(r, 14, _temp)
             elif c is 14:
-                _dec = self.voltage2dec(self.data.at[r,"Vol_Max"],self.data.at[r,"Vol_Min"],text,self.data.at[r,"EnbBits"])
+                _dec = self.voltage2dec(self.data.at[r,"VolMax"],self.data.at[r,"VolMin"],text,self.data.at[r,"EnbBits"])
                 if _dec is not None:
                     self.data.at[r, self.cols_headers[13]] = _dec
                     _temp = QtWidgets.QTableWidgetItem()
@@ -193,7 +193,11 @@ class LoadTable(QtWidgets.QTableWidget):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import SPI File", os.getcwd(),"Data Files (*.xlsm *.xls *.xlsx *.csv)")
         if (path):
             self.onLoading = True
-            self.data = FileIO.load(path)
+            try:
+                self.data = FileIO.load(path)
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(self,"Error","FAIL TO LOAD!")
+                return
             self.setRowCount(0)
             self.setRowCount(self.data.shape[0])
             self.button_read = []
@@ -213,11 +217,11 @@ class LoadTable(QtWidgets.QTableWidget):
                 self.setItem(index, 2, _temp)
                 self.setItem(index, 3, QtWidgets.QTableWidgetItem(str(row["Name"])))
                 _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, float(row["Vol_Max"]))
+                _temp.setData(QtCore.Qt.EditRole, float(row["VolMax"]))
                 self.setItem(index, 4, _temp)
                 _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, float(row["Vol_Min"]))
-                self.setItem(index, 5, QtWidgets.QTableWidgetItem(str(row["Vol_Min"])))
+                _temp.setData(QtCore.Qt.EditRole, float(row["VolMin"]))
+                self.setItem(index, 5, QtWidgets.QTableWidgetItem(str(row["VolMin"])))
                 _temp = QtWidgets.QTableWidgetItem()
                 _temp.setData(QtCore.Qt.EditRole, int(row["DataSize"]))
                 self.setItem(index, 6, _temp)
@@ -329,10 +333,10 @@ class LoadTable(QtWidgets.QTableWidget):
         _temp.setData(QtCore.Qt.EditRole, int(newRowSeries["Sel"]))
         self.setItem(rowcount, 2, _temp)
         _temp = QtWidgets.QTableWidgetItem()
-        _temp.setData(QtCore.Qt.EditRole, float(newRowSeries["Vol_Max"]))
+        _temp.setData(QtCore.Qt.EditRole, float(newRowSeries["VolMax"]))
         self.setItem(rowcount, 4, _temp)
         _temp = QtWidgets.QTableWidgetItem()
-        _temp.setData(QtCore.Qt.EditRole, float(newRowSeries["Vol_Min"]))
+        _temp.setData(QtCore.Qt.EditRole, float(newRowSeries["VolMin"]))
         self.setItem(rowcount, 5, _temp)
         _temp = QtWidgets.QTableWidgetItem()
         _temp.setData(QtCore.Qt.EditRole, int(newRowSeries["DataSize"]))
@@ -412,7 +416,7 @@ class LoadTable(QtWidgets.QTableWidget):
         _temp.setFlags(QtCore.Qt.ItemIsEnabled)
         self.setItem(r, 8, _temp)
 
-        _vol = self.dec2voltage(self.data.at[r,"Vol_Max"],self.data.at[r,"Vol_Min"],res,self.data.at[r,"EnbBits"])
+        _vol = self.dec2voltage(self.data.at[r,"VolMax"],self.data.at[r,"VolMin"],res,self.data.at[r,"EnbBits"])
         if _vol is not None:
             _temp = QtWidgets.QTableWidgetItem()
             _temp.setData(QtCore.Qt.DisplayRole, _vol)
@@ -766,8 +770,11 @@ class MainWindow(QtWidgets.QWidget):
         #grid.addLayout(tablehbox, 0, 0)
         mainlayouot.addLayout(tablehbox)
 
-        self.setGeometry(50, 50, 1800, 1000)
+        if ni8452.dll_flag is False:
+            self.button_connect.setEnabled(False)
+            QtWidgets.QMessageBox.warning(self, "WARNING", "Ni845x.dll NOT FOUND!")
 
+        self.setGeometry(50, 50, 1800, 1000)
         self.setWindowTitle('SPI GUI for NI845x')
         self.setWindowIcon(QtGui.QIcon('tokyotech.ico'))
 
@@ -1003,7 +1010,8 @@ class MainWindow(QtWidgets.QWidget):
 
     def save_data(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save SPI Data", os.getcwd(), "CSV Files (*.csv)")
-        FileIO.df2csv(path,self.table.data)
+        if (path):
+            FileIO.df2csv(path,self.table.data)
 
 
 if __name__ == '__main__':

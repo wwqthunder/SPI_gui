@@ -18,6 +18,7 @@ class ni845x_if:
         self.spi_handle = 0
         self.flag64 = sys.maxsize > 2 ** 32
         self.dll_location = "Ni845x.dll"
+        self.dll_flag = True
         try:
             if self.flag64:
                 self.i2c = c.cdll.LoadLibrary(self.dll_location)
@@ -25,6 +26,7 @@ class ni845x_if:
                 self.i2c = c.windll.LoadLibrary(self.dll_location)
         except Exception as e:
             print(e)
+            self.dll_flag = False
 
     def ni845xFindDevice(self):
         """
