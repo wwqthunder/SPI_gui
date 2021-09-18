@@ -1,9 +1,10 @@
 import os
 import pandas as pd
 import numpy as np
+import xml.etree.ElementTree as ET
+from lxml import etree
 cols_headers = ["SS","Addr","Sel","Name","VolMax","VolMin","DataSize","EnbBits","BinR","DecR","VolR","BinW","DecW","VolW"]
 cols_box = ["SS","Addr","Sel","Name","VolMax","VolMin","DataSize","EnbBits","BinVal","DecVal"]
-
 def load(path):
     _, extension = os.path.splitext(path)
     if '.xlsm' in extension:
@@ -61,13 +62,52 @@ def loadxls(path):
 def df2csv(path,df):
     df.to_csv(path,index=False)
 
+def df2xml(path,df):
+    root = ET.Element('root')  # Root element
+
+    for column in df.columns:
+        entry = ET.SubElement(root, column)  # Adding element
+        for row in df.index:
+            schild = row
+            child = ET.SubElement(entry, str(schild))  # Adding sub-element
+            child.text = str(df[column][schild])
+
+    xml_data = ET.tostring(root)  # binary string
+    with open(path, 'w') as f:  # Write in file as utf-8
+        f.write(xml_data.decode('utf-8'))
+
+def loadxml(path):
+    xml_data = open(path, 'r').read()  # Read file
+    print(xml_data)
+    # tree = ET.parse(path)
+    # root = tree.getroot()
+    # print(root)
+    root = ET.fromstring(xml_data,method="html")
+    #root = ET.XML(xml_data)  # Parse XML
+
+    data = []
+    cols = []
+    for i, child in enumerate(root):
+        data.append([subchild.text for subchild in child])
+        cols.append(child.tag)
+
+    df = pd.DataFrame(data).T  # Write in DF and transpose it
+    df.columns = cols  # Update column names
+    print(df)
+
+    def multiXLSwriter(path,df_list):
+        for _ in range(len(df_list)):
+            with pd.ExcelWriter(path) as writer:
+                df_list[_].to_excel(writer, sheet_name='Sheet'+str(_+1))
 
 if __name__ == '__main__':
-    path = "C:\\Users\op\Documents\\1020.csv"
-    data = load(path)
-    print(data)
-    #print(data)
-    #print(data.dtypes)
+    # path = "1020.csv"
+    # data = load(path)
+    # print(data)
+    # df2xml('test.xml',data)
+    path = 'test.xml'
+    loadxml(path)
+
 
     #newRowSeries = pd.Series([0, 0, 0, "", 1.0, 0.0, 0, 0, "", "", "", "", "", "", ""], index=cols_headers)
     #newRowSeries = data.iloc[-1]

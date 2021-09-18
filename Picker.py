@@ -1,5 +1,5 @@
 import sys
-from PyQt5 import QtCore, QtGui, QtWidgets, sip
+from PyQt5 import QtCore, QtGui, QtWidgets
 
 
 class Picker(QtWidgets.QWidget):
@@ -94,6 +94,7 @@ class Picker(QtWidgets.QWidget):
         self.setWindowIcon(QtGui.QIcon('tokyotech.ico'))
 
 
+
     @QtCore.pyqtSlot(int,str,int)
     def additem(self,index,name,data):
         if index not in self.trueIndex:
@@ -129,6 +130,7 @@ class Picker(QtWidgets.QWidget):
             self.labelList.append(_label)
             self.itemForm.addRow(_label, itembox)
 
+
     @QtCore.pyqtSlot(int,int)
     def handleBitButtonClicked(self, nitem, nbit):
         if [nitem,nbit] not in self.itemBasket:
@@ -162,6 +164,7 @@ class Picker(QtWidgets.QWidget):
                 self.itemButton[nitem][nbit].setStyleSheet("")
                 self.itemButton[nitem][nbit].setText(str(nbit))
             index = self.itemBasket.index([nitem,nbit])
+            print(index)
             self.itemBasket.remove([nitem, nbit])
             # ReIndex
             if [-1,-1] not in self.itemBasket:
@@ -177,7 +180,8 @@ class Picker(QtWidgets.QWidget):
                     self.itemButton[_[0]][_[1]].setText(str(self.itemBasket.index(_)))
 
             self.itemRes.removeWidget(self.resButton[index])
-            sip.delete(self.resButton[index])
+            #sip.delete(self.resButton[index])
+            self.resButton[index].deleteLater()
             del self.resButton[index]
 
 

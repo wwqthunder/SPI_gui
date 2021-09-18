@@ -6,9 +6,12 @@ import led
 import pandas as pd
 import ni845x_if as ni
 import numpy as np
+import pickle as pkl
 from Picker import *
-
+from utilis import *
+from lut import LUT,LUTShow,ArrayShow
 # NI SPI interface
+
 ni8452 = ni.ni845x_if()
 SPIConnFlag = bool(False)
 
@@ -92,34 +95,134 @@ class LoadTable(QtWidgets.QTableWidget):
         #self.setColumnWidth(16, 30)
         self.cellChanged.connect(self._cellclicked)
         self.itemSelectionChanged.connect(self._itemclicked)
+        self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.MenuShow)
+
+    @QtCore.pyqtSlot(QtCore.QPoint)
+    def MenuShow(self, pos):
+        it = self.itemAt(pos)
+        c = it.column()
+        text = it.text()
+
+        menu = QtWidgets.QMenu()
+        add_action = menu.addAction("Add Row")
+        delete_action = menu.addAction("Delete Row")
+        edit_action = menu.addAction("Edit")
+        edit_action.setShortcut('F2')
+        if c in [8,9,10,11,15]:
+            edit_action.setEnabled(False)
+        menu.addSeparator()
+        BackgroundColor_action = menu.addAction("Set Background Color")
+        FontColor_action = menu.addAction("Set Font Color")
+        action = menu.exec_(self.viewport().mapToGlobal(pos))
+        if action == add_action:
+            self.addrow()
+        elif action == edit_action:
+            if c in [0,1,2,6,7,13]:
+                if text.isdigit() is True:
+                    _init = int(text)
+                else:
+                    _init = 0
+                if c != 1:
+                    _max = 99
+                elif c == 13 and self.item(it.row(), 7).text().isdigit():
+                    _max = 2**int(self.item(it.row(), 7).text()) - 1
+                else:
+                    _max = 65535
+                res, okPressed = QtWidgets.QInputDialog.getInt(self, self.cols_headers[c], "Set "+self.cols_headers[c]+":", _init, 0, _max, 1)
+                if okPressed:
+                    for _ in self.selectedIndexes():
+                        r = _.row()
+                        _temp = QtWidgets.QTableWidgetItem()
+                        _temp.setData(QtCore.Qt.EditRole, res)
+                        self.setItem(r, c, _temp)
+            elif c in [3,12]:
+                if c == 3:
+                    _suffix = "Name"
+                else:
+                    _suffix = "Bin"
+                res, okPressed = QtWidgets.QInputDialog.getText(self, _suffix, 'Input '+_suffix+':')
+                if okPressed:
+                    for _ in self.selectedIndexes():
+                        r = _.row()
+                        self.setItem(r, c, QtWidgets.QTableWidgetItem(res))
+            elif c in [4,5,14]:
+                try:
+                    _init = float(text)
+                except Exception as e:
+                    _init = 0.0
+                _min = -10
+                _max = 10
+                if c == 4:
+                    _suffix = ' Max'
+                elif c == 5:
+                    _suffix = ' Min'
+                else:
+                    _suffix = ''
+                    try:
+                        _min = float(self.item(it.row(), 5).text())
+                    except Exception as e:
+                        pass
+                    try:
+                        _max = float(self.item(it.row(), 4).text())
+                    except Exception as e:
+                        pass
+                res, okPressed = QtWidgets.QInputDialog.getDouble(self, 'Set Voltage', 'Voltage'+_suffix+':',_init,_min,_max,1)
+                if okPressed:
+                    for _ in self.selectedIndexes():
+                        r = _.row()
+                        _temp = QtWidgets.QTableWidgetItem()
+                        _temp.setData(QtCore.Qt.EditRole, res)
+                        self.setItem(r, c, _temp)
+        elif action == delete_action:
+            self.removerow()
+        elif action == BackgroundColor_action:
+            color = QtWidgets.QColorDialog.getColor()
+            if color.isValid():
+                for _ in self.selectedIndexes():
+                    self.item(_.row(),_.column()).setBackground(color)
+        elif action == FontColor_action:
+            color = QtWidgets.QColorDialog.getColor()
+            if color.isValid():
+                for _ in self.selectedIndexes():
+                    self.item(_.row(),_.column()).setForeground(color)
 
     @QtCore.pyqtSlot(int, int)
     def _cellclicked(self, r, c):
-        it = self.item(r, c)
-        it.setTextAlignment(QtCore.Qt.AlignCenter)
+        self.blockSignals(True)
+        self.item(r, c).setTextAlignment(QtCore.Qt.AlignCenter)
         if self.onLoading is False and c not in [8,9,10]:
             self.onLoading = True
-            text = it.text().replace(" ", "")
+            print(str(r)+ ","+str(c))
+            text = self.item(r, c).text().replace(" ", "")
             if c is 13:
                 if text.isdigit():
-                    self.item(r, c).setData(QtCore.Qt.EditRole, int(text))
+                    _temp = QtWidgets.QTableWidgetItem()
+                    _temp.setData(QtCore.Qt.EditRole, int(text))
+                    self.setItem(r, c, _temp)
+                    self.item(r, c).setTextAlignment(QtCore.Qt.AlignCenter)
                 else:
                     self.item(r, c).setData(QtCore.Qt.EditRole, self.data.at[r,self.cols_headers[c]])
                     self.onLoading = False
+                    self.blockSignals(False)
                     return
             elif c is 12:
-                for _ in text:
+                for _ in text:  #Binary Check
                     if _ not in '01':
                         self.item(r, c).setData(QtCore.Qt.EditRole, self.data.at[r, self.cols_headers[c]])
                         self.onLoading = False
+                        self.blockSignals(False)
                         return
             elif c is 14:
                 try:
-                    data = float(text)
-                    self.item(r, c).setData(QtCore.Qt.EditRole, data)
+                    _temp = QtWidgets.QTableWidgetItem()
+                    _temp.setData(QtCore.Qt.EditRole, float(text))
+                    self.setItem(r, c, _temp)
+                    self.item(r, c).setTextAlignment(QtCore.Qt.AlignCenter)
                 except Exception as e:
                     self.item(r, c).setData(QtCore.Qt.EditRole, self.data.at[r, self.cols_headers[c]])
                     self.onLoading = False
+                    self.blockSignals(False)
                     return
             self.data.at[r,self.cols_headers[c]] = text
             # Bin Dec data sync
@@ -130,18 +233,21 @@ class LoadTable(QtWidgets.QTableWidget):
                     _bin = format(_dec, _format)
                     self.data.at[r, self.cols_headers[12]] = _bin
                     self.setItem(r, 12, QtWidgets.QTableWidgetItem(_bin))
+                    self.item(r, 12).setTextAlignment(QtCore.Qt.AlignCenter)
                     _vol = self.dec2voltage(self.data.at[r,"VolMax"],self.data.at[r,"VolMin"],_dec,self.data.at[r,"EnbBits"])
                     if _vol is not None:
                         self.data.at[r, self.cols_headers[14]] = _vol
                         _temp = QtWidgets.QTableWidgetItem()
                         _temp.setData(QtCore.Qt.EditRole,_vol)
                         self.setItem(r, 14, _temp)
+                        self.item(r, 14).setTextAlignment(QtCore.Qt.AlignCenter)
             elif c is 12:
                 _dec = int(text,2)
                 self.data.at[r, self.cols_headers[13]] = _dec
                 _temp = QtWidgets.QTableWidgetItem()
                 _temp.setData(QtCore.Qt.EditRole, _dec)
                 self.setItem(r, 13, _temp)
+                self.item(r, 13).setTextAlignment(QtCore.Qt.AlignCenter)
                 if str(self.data.at[r,"EnbBits"]).isdigit():
                     if int(self.data.at[r,"EnbBits"]) is not 0:
                         _format = "0" + str(self.data.at[r, "EnbBits"]) + "b"
@@ -153,6 +259,7 @@ class LoadTable(QtWidgets.QTableWidget):
                     _temp = QtWidgets.QTableWidgetItem()
                     _temp.setData(QtCore.Qt.EditRole,_vol)
                     self.setItem(r, 14, _temp)
+                    self.item(r, 14).setTextAlignment(QtCore.Qt.AlignCenter)
             elif c is 14:
                 _dec = self.voltage2dec(self.data.at[r,"VolMax"],self.data.at[r,"VolMin"],text,self.data.at[r,"EnbBits"])
                 if _dec is not None:
@@ -160,10 +267,12 @@ class LoadTable(QtWidgets.QTableWidget):
                     _temp = QtWidgets.QTableWidgetItem()
                     _temp.setData(QtCore.Qt.EditRole, _dec)
                     self.setItem(r, 13, _temp)
+                    self.item(r, 13).setTextAlignment(QtCore.Qt.AlignCenter)
                     _format = "0" + str(self.data.at[r, "EnbBits"]) + "b"
                     _bin = format(_dec, _format)
                     self.data.at[r, self.cols_headers[12]] = _bin
                     self.setItem(r, 12, QtWidgets.QTableWidgetItem(_bin))
+                    self.item(r, 12).setTextAlignment(QtCore.Qt.AlignCenter)
             else:
                 pass
             # Status Update
@@ -176,7 +285,7 @@ class LoadTable(QtWidgets.QTableWidget):
                 self.button_read[r].setEnabled(SPIConnFlag and self.button_read_en[r])
                 self.button_write[r].setEnabled(SPIConnFlag and self.button_write_en[r])
             self.onLoading = False
-
+        self.blockSignals(False)
 
     @QtCore.pyqtSlot()
     def _itemclicked(self):
@@ -188,80 +297,85 @@ class LoadTable(QtWidgets.QTableWidget):
 
 
 
-    @QtCore.pyqtSlot()
-    def dataload(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import SPI File", os.getcwd(),"Data Files (*.xlsm *.xls *.xlsx *.csv)")
-        if (path):
-            self.onLoading = True
-            try:
-                self.data = FileIO.load(path)
-            except Exception as e:
-                QtWidgets.QMessageBox.critical(self,"Error","FAIL TO LOAD!")
+
+    def dataload(self, load_flag):
+        if load_flag is False:
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import SPI File", os.getcwd(),
+                                                            "Data Files (*.xlsm *.xls *.xlsx *.csv)")
+            if (path):
+                try:
+                    self.data = FileIO.load(path)
+                except Exception as e:
+                    QtWidgets.QMessageBox.critical(self, "Error", "FAIL TO LOAD!")
+                    return
+            else:
                 return
-            self.setRowCount(0)
-            self.setRowCount(self.data.shape[0])
-            self.button_read = []
-            self.button_write = []
-            self.button_read_en = []
-            self.button_write_en = []
+        self.onLoading = True
+        self.setRowCount(0)
+        self.setRowCount(self.data.shape[0])
+        self.button_read = []
+        self.button_write = []
+        self.button_read_en = []
+        self.button_write_en = []
 
-            for index, row in self.data.iterrows():
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, int(row["SS"]))
-                self.setItem(index, 0, _temp)
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, int(row["Addr"]))
-                self.setItem(index, 1, _temp)
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, int(row["Sel"]))
-                self.setItem(index, 2, _temp)
-                self.setItem(index, 3, QtWidgets.QTableWidgetItem(str(row["Name"])))
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, float(row["VolMax"]))
-                self.setItem(index, 4, _temp)
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, float(row["VolMin"]))
-                self.setItem(index, 5, QtWidgets.QTableWidgetItem(str(row["VolMin"])))
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, int(row["DataSize"]))
-                self.setItem(index, 6, _temp)
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, int(row["EnbBits"]))
-                self.setItem(index, 7, _temp)
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.DisplayRole, str(row["BinR"]))
-                _temp.setFlags(QtCore.Qt.ItemIsEnabled)
-                self.setItem(index, 8, _temp)
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.DisplayRole, str(row["DecR"]))
-                _temp.setFlags(QtCore.Qt.ItemIsEnabled)
-                self.setItem(index, 9, _temp)
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.DisplayRole, str(row["VolR"]))
-                _temp.setFlags(QtCore.Qt.ItemIsEnabled)
-                self.setItem(index, 10, _temp)
-                self.setItem(index, 12, QtWidgets.QTableWidgetItem(str(row["BinW"])))
-                _temp = QtWidgets.QTableWidgetItem()
-                _temp.setData(QtCore.Qt.EditRole, row["DecW"])
-                self.setItem(index, 13, _temp)
-                self.setItem(index, 14, QtWidgets.QTableWidgetItem(str(row["VolW"])))
+        for index, row in self.data.iterrows():
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.EditRole, int(row["SS"]))
+            self.setItem(index, 0, _temp)
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.EditRole, int(row["Addr"]))
+            self.setItem(index, 1, _temp)
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.EditRole, int(row["Sel"]))
+            self.setItem(index, 2, _temp)
+            self.setItem(index, 3, QtWidgets.QTableWidgetItem(str(row["Name"])))
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.EditRole, float(row["VolMax"]))
+            self.setItem(index, 4, _temp)
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.EditRole, float(row["VolMin"]))
+            self.setItem(index, 5, QtWidgets.QTableWidgetItem(str(row["VolMin"])))
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.EditRole, int(row["DataSize"]))
+            self.setItem(index, 6, _temp)
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.EditRole, int(row["EnbBits"]))
+            self.setItem(index, 7, _temp)
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.DisplayRole, str(row["BinR"]))
+            _temp.setFlags(QtCore.Qt.ItemIsEnabled)
+            self.setItem(index, 8, _temp)
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.DisplayRole, str(row["DecR"]))
+            _temp.setFlags(QtCore.Qt.ItemIsEnabled)
+            self.setItem(index, 9, _temp)
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.DisplayRole, str(row["VolR"]))
+            _temp.setFlags(QtCore.Qt.ItemIsEnabled)
+            self.setItem(index, 10, _temp)
+            self.setItem(index, 12, QtWidgets.QTableWidgetItem(str(row["BinW"])))
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.EditRole, row["DecW"])
+            self.setItem(index, 13, _temp)
+            self.setItem(index, 14, QtWidgets.QTableWidgetItem(str(row["VolW"])))
 
-                button_read = QtWidgets.QPushButton('Read')
-                button_write = QtWidgets.QPushButton('Write')
-                button_read.clicked.connect(lambda *args, rowcount=index: self.handleReadClicked(rowcount))
-                button_write.clicked.connect(lambda *args, rowcount=index: self.handleWriteClicked(rowcount))
-                self.button_read.append(button_read)
-                self.button_write.append(button_write)
-                _enRead = str(row["SS"]).isdigit() and str(row["Addr"]).isdigit() and str(row["DataSize"]).isdigit() and str(row["EnbBits"]).isdigit() and str(row["Sel"]).isdigit()
-                _enWrite = _enRead and str(row["DecW"]).isdigit()
-                self.button_read_en.append(_enRead)
-                self.button_write_en.append(_enWrite)
-                button_read.setEnabled(SPIConnFlag and _enRead)
-                button_write.setEnabled(SPIConnFlag and _enWrite)
-                self.setCellWidget(index, 11, button_read)
-                self.setCellWidget(index, 15, button_write)
-            #self.resizeColumnsToContents()
-            self.onLoading = False
+            button_read = QtWidgets.QPushButton('Read')
+            button_write = QtWidgets.QPushButton('Write')
+            button_read.clicked.connect(lambda *args, rowcount=index: self.handleReadClicked(rowcount))
+            button_write.clicked.connect(lambda *args, rowcount=index: self.handleWriteClicked(rowcount))
+            self.button_read.append(button_read)
+            self.button_write.append(button_write)
+            _enRead = str(row["SS"]).isdigit() and str(row["Addr"]).isdigit() and str(
+                row["DataSize"]).isdigit() and str(row["EnbBits"]).isdigit() and str(row["Sel"]).isdigit()
+            _enWrite = _enRead and str(row["DecW"]).isdigit()
+            self.button_read_en.append(_enRead)
+            self.button_write_en.append(_enWrite)
+            button_read.setEnabled(SPIConnFlag and _enRead)
+            button_write.setEnabled(SPIConnFlag and _enWrite)
+            self.setCellWidget(index, 11, button_read)
+            self.setCellWidget(index, 15, button_write)
+            # self.resizeColumnsToContents()
+        self.onLoading = False
 
     @QtCore.pyqtSlot()
     def addrow(self):
@@ -332,6 +446,7 @@ class LoadTable(QtWidgets.QTableWidget):
         _temp = QtWidgets.QTableWidgetItem()
         _temp.setData(QtCore.Qt.EditRole, int(newRowSeries["Sel"]))
         self.setItem(rowcount, 2, _temp)
+        self.setItem(rowcount, 3, QtWidgets.QTableWidgetItem(""))
         _temp = QtWidgets.QTableWidgetItem()
         _temp.setData(QtCore.Qt.EditRole, float(newRowSeries["VolMax"]))
         self.setItem(rowcount, 4, _temp)
@@ -359,6 +474,8 @@ class LoadTable(QtWidgets.QTableWidget):
         _temp = QtWidgets.QTableWidgetItem()
         _temp.setData(QtCore.Qt.EditRole, "")
         self.setItem(rowcount, 12, _temp)
+        self.setItem(rowcount, 13, QtWidgets.QTableWidgetItem(""))
+        self.setItem(rowcount, 14, QtWidgets.QTableWidgetItem(""))
         self.onLoading = False
 
 
@@ -483,15 +600,26 @@ class LoadTable(QtWidgets.QTableWidget):
 
 class ShortCutList(QtWidgets.QTableWidget):
     Tx = QtCore.pyqtSignal(bool,int)
+    dataset = QtCore.pyqtSignal(list,int)
     def __init__(self,parent=None):
         super(ShortCutList, self).__init__(0,6,parent)
         self.verticalHeader().hide()
         self.setHorizontalHeaderLabels(["Name","Range","Bin","Dec","Read","Write"])
+        self.horizontalHeader().setStyleSheet("QHeaderView::section{"
+            "border-top:0px solid #D8D8D8;"
+            "border-left:0px solid #D8D8D8;"
+            "border-right:1px solid #D8D8D8;"
+            "border-bottom: 1px solid #D8D8D8;"
+            "background-color:white;"
+            "padding:4px;"
+        "}")
         self.button_read = []
         self.button_write = []
+        self.button_read_en = []
+        self.button_write_en = []
         self.ReadData = []
         self.ReadList = []
-        self.data = pd.DataFrame(columns=["Name","Range","Bin","Dec"])
+        self.data = pd.DataFrame(columns=["Name","Range","Bin","Dec","Length"])
         self.onLoading = False
         self.setColumnWidth(0, 100)
         self.setColumnWidth(1, 80)
@@ -526,34 +654,78 @@ class ShortCutList(QtWidgets.QTableWidget):
         button_write.clicked.connect(lambda *args, rowcount=0: self.handleWriteRunClicked(rowcount))
         self.button_read.append(button_read)
         self.button_write.append(button_write)
+        self.button_read_en.append(SPIConnFlag)
+        self.button_write_en.append(SPIConnFlag)
         self.setCellWidget(0, 4, button_read)
         self.setCellWidget(0, 5, button_write)
         self.cellChanged.connect(self._cellchanged)
 
     @QtCore.pyqtSlot(int, int)
     def _cellchanged(self, r, c):
-        it = self.item(r, c)
-        it.setTextAlignment(QtCore.Qt.AlignCenter)
-        row = r -1
+        self.blockSignals(True)
+        self.item(r, c).setTextAlignment(QtCore.Qt.AlignCenter)
         if self.onLoading is False:
             self.onLoading = True
-            if c is 2:
-                if (it.text().count(".") > 1 and [-1, -1] in self.ReadData[row]) or (it.text().count(".") > 0 and [-1, -1] not in self.ReadData[row]):
+            row = r - 1
+            text = self.item(r, c).text()
+            if c is 0:
+                self.data.at[row, "Name"] = text
+            elif c is 1:
+                _text = text.replace(" ", "")
+                _temp = QtWidgets.QTableWidgetItem()
+                _temp.setData(QtCore.Qt.EditRole, _text)
+                _ReadData, _ReadList = RangeParse(_text)
+                print(_ReadData)
+                print(_ReadList)
+                self.data.at[row, "Range"] = _text
+                self.ReadData[row] = _ReadData
+                self.ReadList[row] = _ReadList
+                if _ReadList is not None:
+                    self.button_read_en[r] = True
+                    self.setItem(r, c, _temp)
+                    if _ReadData is None:
+                        _temp = QtWidgets.QTableWidgetItem()
+                        _temp.setData(QtCore.Qt.DisplayRole, "")
+                        _temp.setFlags(QtCore.Qt.ItemIsEnabled)
+                        self.setItem(r, 2, _temp)
+                        _temp = QtWidgets.QTableWidgetItem()
+                        _temp.setData(QtCore.Qt.DisplayRole, "")
+                        _temp.setFlags(QtCore.Qt.ItemIsEnabled)
+                        self.setItem(r, 3, _temp)
+                        self.button_write_en[r] = True
+                    else:
+                        self.blockSignals(False)
+                        print(row)
+                        self.dataset.emit(_ReadData,row)
+                        self.blockSignals(True)
+                else:
+                    self.button_read_en[r] = False
+                    self.button_write_en[r] = False
+                    _temp.setForeground(QtGui.QColor(255, 0, 0))
+                    self.setItem(r, c, _temp)
+                self.item(r, c).setTextAlignment(QtCore.Qt.AlignCenter)
+
+            elif c is 2:
+                if self.ReadData[row] is None:
+                    self.onLoading = False
+                    return
+                if (text.count(".") > 1 and [-1, -1] in self.ReadData[row]) or (text.count(".") > 0 and [-1, -1] not in self.ReadData[row]):
                     self.item(r, c).setData(QtCore.Qt.EditRole, self.data.at[row, "Bin"])
                     self.onLoading = False
                     return
-                for _ in it.text():
+                for _ in text:
                     if _ not in '.01':
                         self.item(r, c).setData(QtCore.Qt.EditRole, self.data.at[row, "Bin"])
                         self.onLoading = False
                         return
 
-                self.data.at[row, "Bin"] = it.text()
-                _dec = self.Bin2FixPointFloat(it.text())
+                self.data.at[row, "Bin"] = text
+                _dec = Bin2FixPointFloat(text)
                 self.data.at[row, "Dec"] = _dec
                 self.item(r, 3).setData(QtCore.Qt.EditRole, _dec)
                 if [-1, -1] not in self.ReadData[row]:
-                    _format = "0" + str(len(self.ReadData[row])) + "b"
+                    print(self.data.at[row, "Length"])
+                    _format = "0" + str(int(self.data.at[row, "Length"])) + "b"
                     _bin = format(int(_dec), _format)
                 else:
                     _index = self.ReadData[row].index([-1, -1])
@@ -561,11 +733,16 @@ class ShortCutList(QtWidgets.QTableWidget):
                         nint = 1
                     else:
                         nint = _index
-                    _bin = self.Float2FixPointBin(_dec, nint, len(self.ReadData[row]) - _index - 1)
+                    _bin = Float2FixPointBin(_dec, nint, self.data.at[row, "Length"] - _index - 1)
                 self.data.at[row, "Bin"] = _bin
                 self.item(r, 2).setData(QtCore.Qt.EditRole, _bin)
+                #self.button_write_en[row] = True
             elif c is 3:
-                if float(it.text()) < 0:
+            #elif c is 3 and self.button_read_en[row]:
+                if self.ReadData[row] is None:
+                    self.onLoading = False
+                    return
+                if float(text) < 0:
                     if [-1, -1] not in self.ReadData[row]:
                         self.item(r, c).setData(QtCore.Qt.EditRole, int(self.data.at[row, "Dec"]))
                     else:
@@ -574,22 +751,86 @@ class ShortCutList(QtWidgets.QTableWidget):
                     return
 
                 if [-1, -1] not in self.ReadData[row]:
-                    _format = "0" + str(len(self.ReadData[row])) + "b"
-                    self.data.at[row, "Dec"] = int(it.text())
-                    _bin = format(int(it.text()), _format)
+                    _format = "0" + str(int(self.data.at[row, "Length"])) + "b"
+                    self.data.at[row, "Dec"] = int(text)
+                    _bin = format(int(text), _format)
                 else:
                     _index = self.ReadData[row].index([-1, -1])
                     if _index is 0:
                         nint = 1
                     else:
                         nint = _index
-                    self.data.at[row, "Dec"] = float(it.text())
-                    _bin = self.Float2FixPointBin(float(it.text()), nint, len(self.ReadData[row]) - _index - 1)
+                    self.data.at[row, "Dec"] = float(text)
+                    _bin = Float2FixPointBin(float(text), nint, self.data.at[row, "Length"] - _index - 1)
                 self.data.at[row, "Bin"] = _bin
                 self.item(r, 2).setData(QtCore.Qt.EditRole, _bin)
+                #self.button_write_en_en[row] = True
             else:
                 pass
             self.onLoading = False
+        self.blockSignals(False)
+
+    def dataload(self):
+        self.onLoading = True
+        self.setRowCount(self.data.shape[0]+1)
+        self.button_read = []
+        self.button_write = []
+        self.ReadData = []
+        self.ReadList = []
+        for index, row in self.data.iterrows():
+            self.setItem(index+1, 0, QtWidgets.QTableWidgetItem(row["Name"]))
+            _temp = QtWidgets.QTableWidgetItem()
+            _temp.setData(QtCore.Qt.DisplayRole, row["Range"])
+            self.setItem(index+1, 1, _temp)
+            _ReadData, _ReadList = RangeParse(row['Range'])
+            self.ReadList.append(_ReadList)
+            self.ReadData.append(_ReadData)
+            self.setItem(index+1, 2, QtWidgets.QTableWidgetItem(row["Bin"]))
+            _temp = QtWidgets.QTableWidgetItem()
+            if [-1,-1] not in _ReadData:
+                _temp.setData(QtCore.Qt.EditRole, intSafe(row["Dec"]))
+            else:
+                _temp.setData(QtCore.Qt.EditRole, float(row["Dec"]))
+            self.setItem(index+1, 3, _temp)
+
+            button_read = QtWidgets.QPushButton('Read')
+            button_write = QtWidgets.QPushButton('Write')
+            button_read.setEnabled(SPIConnFlag)
+            button_write.setEnabled(SPIConnFlag)
+            button_read.clicked.connect(lambda *args, rowcount=index: self.handleReadRunClicked(rowcount))
+            button_write.clicked.connect(lambda *args, rowcount=index: self.handleWriteRunClicked(rowcount))
+            self.button_read.append(button_read)
+            self.button_write.append(button_write)
+            self.button_read_en.append(SPIConnFlag)
+            self.button_write_en.append(SPIConnFlag)
+            self.setCellWidget(index+1, 4, button_read)
+            self.setCellWidget(index+1, 5, button_write)
+        self.onLoading = False
+
+    @QtCore.pyqtSlot()
+    def addrow(self):
+        rowcount = self.rowCount()
+        newRowSeries = pd.Series(["", "", "", "",0], index=["Name", "Range", "Bin", "Dec","Length"])
+        self.insertRow(rowcount)
+
+        self.data = self.data.append(newRowSeries, ignore_index=True)
+        self.ReadList.append([])
+        self.ReadData.append([])
+        button_read = QtWidgets.QPushButton('Read')
+        button_write = QtWidgets.QPushButton('Write')
+        button_read.setEnabled(False)
+        button_write.setEnabled(False)
+        button_read.clicked.connect(lambda *args, rowcount=rowcount:self.handleReadRunClicked(rowcount))
+        button_write.clicked.connect(lambda *args, rowcount=rowcount: self.handleWriteRunClicked(rowcount))
+        self.button_read.append(button_read)
+        self.button_write.append(button_write)
+        self.button_read_en.append(False)
+        self.button_write_en.append(False)
+
+        self.onLoading = True
+        self.setCellWidget(rowcount, 4, button_read)
+        self.setCellWidget(rowcount, 5, button_write)
+        self.onLoading = False
 
     @QtCore.pyqtSlot()
     def removerow(self):
@@ -604,8 +845,11 @@ class ShortCutList(QtWidgets.QTableWidget):
                 self.removeRow(row+1)
                 del self.button_read[row+1]
                 del self.button_write[row+1]
+                del self.button_read_en[row + 1]
+                del self.button_write_en[row + 1]
                 del self.ReadData[row]
                 del self.ReadList[row]
+
 
             self.data = self.data.drop(index=rows)
             self.data.reset_index(drop=True, inplace=True)
@@ -628,38 +872,90 @@ class ShortCutList(QtWidgets.QTableWidget):
         self.Tx.emit(False,r)
 
     def button_update(self):
-        for button in self.button_write+self.button_read:
-            button.setEnabled(SPIConnFlag)
-
-    def Float2FixPointBin(self,float,nint,nfrac):
-        _Dec = round(float*(2**nfrac))
-        _format = "0" + str(nint + nfrac) + "b"
-        _bin = format(_Dec, _format)
-        bin = _bin[:nint] + "." + _bin[nint:]
-        return bin
-
-    def Bin2FixPointFloat(self,_bin):
-        if "." in _bin:
-            index = _bin.index(".")
-            e = len(_bin) - index - 1
-            _bin = _bin.replace(".","")
-            _dec = int(_bin, 2)
-            dec = float(_dec)/(2**e)
-            return dec
-        else:
-            return float(int(_bin, 2))
+        for _ in range(len(self.button_read)):
+            self.button_read[_].setEnabled(SPIConnFlag and self.button_read_en[_])
+        for _ in range(len(self.button_write)):
+            self.button_write[_].setEnabled(SPIConnFlag and self.button_write_en[_])
 
 
+class VarTable(QtWidgets.QTableWidget):
+    def __init__(self,parent=None):
+        super(VarTable, self).__init__(0,4,parent)
+        self.setHorizontalHeaderLabels(["Name","Expression","Value","Description"])
+        self.horizontalHeader().setHighlightSections(True)
+        # Draw Borders for Cols' Headers on Win10
+        self.horizontalHeader().setStyleSheet("QHeaderView::section{"
+            "border-top:0px solid #D8D8D8;"
+            "border-left:0px solid #D8D8D8;"
+            "border-right:1px solid #D8D8D8;"
+            "border-bottom: 1px solid #D8D8D8;"
+            "background-color:white;"
+            "padding:4px;"
+        "}")
+        self.setColumnWidth(0, 100)
+        self.setColumnWidth(1, 200)
+        self.setColumnWidth(2, 100)
+        self.setColumnWidth(3, 100)
 
-class MainWindow(QtWidgets.QWidget):
+        self.data = pd.DataFrame(["Name","Expression","Value","Description"])
+        self.VarTree = {}   # {"Name":["sin(x)*cos(x)"(str->equation, if int/float->var),[children(str->Var,)]],....}
+
+    @QtCore.pyqtSlot()
+    def addrow(self):
+        rowcount = self.rowCount()
+        newRowSeries = pd.Series(["", "", "", ""], index=["Name","Expression","Value","Description"])
+        self.insertRow(rowcount)
+        self.data = self.data.append(newRowSeries, ignore_index=True)
+
+    @QtCore.pyqtSlot()
+    def removerow(self):
+        rows = set()
+        for index in self.selectedIndexes():
+            rows.add(index.row())
+        if len(rows) > 0:
+            for row in sorted(rows, reverse=True):
+                self.removeRow(row)
+            self.data = self.data.drop(index=rows)
+            self.data.reset_index(drop=True, inplace=True)
+
+class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
-        super(MainWindow, self).__init__(parent)
+        super().__init__(parent)
 
+    # def __init__(self, parent=None):
+    #     super(MainWindow, self).__init__(parent)
+        #self.menubar = QtWidgets.QMenuBar()
         self.picker = None
         self.table = LoadTable()
         self.list = ShortCutList()
-
+        self.var = VarTable()
         self.list.Tx.connect(self.handleBackbone)
+        self.list.dataset.connect(self.length_data)
+
+        mainMenu = self.menuBar()
+        fileMenu = mainMenu.addMenu('File')
+        fileMenu.addAction("New")
+        editMenu = mainMenu.addMenu('Edit')
+        viewMenu = mainMenu.addMenu('View')
+        searchMenu = mainMenu.addMenu('Search')
+        toolsMenu = mainMenu.addMenu('Tools')
+        RawDataView = toolsMenu.addMenu("Raw Data")
+        action_view1 = QtWidgets.QAction("Main Table",self)
+        action_view2 = QtWidgets.QAction("Shortcut List",self)
+        action_view3 = QtWidgets.QAction("List Index Array",self)
+        action_view4 = QtWidgets.QAction("List Data Array",self)
+        action_view1.triggered.connect(lambda *args,idx=int(1): self.TableVisual(idx))
+        action_view2.triggered.connect(lambda *args,idx=int(2): self.TableVisual(idx))
+        action_view3.triggered.connect(lambda *args,idx=int(3): self.TableVisual(idx))
+        action_view4.triggered.connect(lambda *args,idx=int(4): self.TableVisual(idx))
+        RawDataView.addAction(action_view1)
+        RawDataView.addAction(action_view2)
+        RawDataView.addAction(action_view3)
+        RawDataView.addAction(action_view4)
+        helpMenu = mainMenu.addMenu('Help')
+
+        #self.statusBar().showMessage("Ready")
+
 
         load_button = QtWidgets.QPushButton("Load")
         load_button.setFixedSize(QtCore.QSize(100, 30))
@@ -696,9 +992,12 @@ class MainWindow(QtWidgets.QWidget):
         button_box1 = QtWidgets.QGroupBox("Main Table")
         button_box1.setLayout(button_layout1)
 
-        self.add_button_sc = QtWidgets.QPushButton("Add")
+        self.add_button_sc = QtWidgets.QPushButton("Edit")
         self.add_button_sc.setFixedSize(QtCore.QSize(100, 30))
-        self.add_button_sc.clicked.connect(self.PickerCaller)
+        self.add_button_sc.clicked.connect(self.EditCaller)
+        self.picker_button_sc = QtWidgets.QPushButton("Picker")
+        self.picker_button_sc.setFixedSize(QtCore.QSize(100, 30))
+        self.picker_button_sc.clicked.connect(self.PickerCaller)
         self.delete_button_sc = QtWidgets.QPushButton("Delete")
         self.delete_button_sc.setFixedSize(QtCore.QSize(100, 30))
         self.delete_button_sc.clicked.connect(self.list.removerow)
@@ -708,6 +1007,7 @@ class MainWindow(QtWidgets.QWidget):
 
         button_layout2 = QtWidgets.QHBoxLayout()
         button_layout2.addWidget(self.add_button_sc)
+        button_layout2.addWidget(self.picker_button_sc)
         button_layout2.addWidget(self.delete_button_sc)
         button_layout2.addWidget(self.lock_button_sc)
         button_layout2.addStretch(1)
@@ -719,10 +1019,29 @@ class MainWindow(QtWidgets.QWidget):
         button_layout.addWidget(button_box2,3)
 
 
+        self.add_button_var = QtWidgets.QPushButton("Add")
+        self.add_button_var.setFixedSize(QtCore.QSize(100, 30))
+        self.add_button_var.clicked.connect(self.var.addrow)
+        self.delete_button_var = QtWidgets.QPushButton("Delete")
+        self.delete_button_var.setFixedSize(QtCore.QSize(100, 30))
+        self.delete_button_var.clicked.connect(self.var.removerow)
+
+        button_layout3 = QtWidgets.QHBoxLayout()
+        button_layout3.addWidget(self.add_button_var)
+        button_layout3.addWidget(self.delete_button_var)
+        button_layout3.addStretch(1)
+        button_box3 = QtWidgets.QGroupBox("Variables")
+        button_box3.setLayout(button_layout3)
+
         tablehbox = QtWidgets.QHBoxLayout()
+        tablehbox_right = QtWidgets.QVBoxLayout()
         #tablehbox.setContentsMargins(10, 10, 10, 10)
+        tablehbox_right.addWidget(self.list)
+        #£tablehbox_right.addWidget(self.var)
+        #tablehbox_right.addWidget(button_box3)
         tablehbox.addWidget(self.table,7)
-        tablehbox.addWidget(self.list,3)
+        tablehbox.addLayout(tablehbox_right,3)
+        #tablehbox.addWidget(self.list,3)
 
         self.combox_clk = QtWidgets.QComboBox(self)
         self.combox_clk.addItems(["25", "32", "40", "50", "80", "100", "125", "160", "200", "250", "400", "500", "625", "800", "1000", "1250", "2500", "3125", "4000", "5000", "6250", "10000", "12500", "20000", "25000", "33330", "50000"])
@@ -761,7 +1080,7 @@ class MainWindow(QtWidgets.QWidget):
         #ctrlbox.addLayout(button_layout)
         #ctrlbox.setContentsMargins(10, 200, 10, 200)
 
-        mainlayouot = QtWidgets.QVBoxLayout(self)
+        mainlayouot = QtWidgets.QVBoxLayout()
         tablehbox.setContentsMargins(10, 10, 10, 10)
         mainlayouot.addWidget(setupbox)
         mainlayouot.addLayout(button_layout)
@@ -769,21 +1088,34 @@ class MainWindow(QtWidgets.QWidget):
         #grid.addLayout(ctrlbox, 0, 1)
         #grid.addLayout(tablehbox, 0, 0)
         mainlayouot.addLayout(tablehbox)
-
+        qWidget = QtWidgets.QWidget()
+        qWidget.setLayout(mainlayouot)
+        self.setCentralWidget(qWidget)
         if ni8452.dll_flag is False:
             self.button_connect.setEnabled(False)
             QtWidgets.QMessageBox.warning(self, "WARNING", "Ni845x.dll NOT FOUND!")
-
         self.setGeometry(50, 50, 1800, 1000)
         self.setWindowTitle('SPI GUI for NI845x')
         self.setWindowIcon(QtGui.QIcon('tokyotech.ico'))
+        self.showMaximized()
+
+        if os.path.exists("config.spi") is True:
+            try:
+                f = open('config.spi', 'rb')
+                self.table.data, self.list.data, self.list.ReadData, self.list.ReadList = pkl.load(f)
+                f.close()
+                self.table.dataload(True)
+                self.list.dataload()
+            except Exception as e:
+                pass
+
 
     @QtCore.pyqtSlot()
     def PickerCaller(self):
         if self.picker is not None:
             self.picker.close()
         self.picker = Picker()
-        self.picker.buttonApply.clicked.connect(self.addrow_process)
+        self.picker.buttonApply.clicked.connect(lambda row=None: self.addrow_process(row))
         self.picker.CloseSignal.connect(self.pickerClose)
         self.table.SelectedTx.connect(self.picker.additem)
         self.picker.show()
@@ -795,9 +1127,40 @@ class MainWindow(QtWidgets.QWidget):
         self.lock_button_sc.setEnabled(False)
         self.picker.deleteAll()
 
-    def addrow_process(self):
-        itemBasket = self.picker.itemBasket
-        index = self.picker.trueIndex
+    @QtCore.pyqtSlot()
+    def EditCaller(self):
+        if self.picker is not None:
+            self.picker.close()
+        self.picker = Picker()
+        row = self.list.selectedIndexes()[0].row() -1
+        self.picker.buttonApply.clicked.connect(lambda row=row: self.addrow_process(row+1))
+        self.picker.CloseSignal.connect(self.pickerClose)
+        self.table.SelectedTx.connect(self.picker.additem)
+        self.picker.nameInput.setText(self.list.data.at[row, "Name"])
+        if self.lock_button.text() == "Lock":
+            self.lock_switch()
+        if self.lock_button_sc.text() == "Lock":
+            self.lock_sc_switch()
+        self.lock_button.setEnabled(False)
+        self.lock_button_sc.setEnabled(False)
+        self.picker.deleteAll()
+        for index in self.list.ReadList[row]:
+            r = index -1
+            nbit = int(self.table.data.at[r, self.table.cols_headers[7]])
+            self.picker.additem(index,self.table.data.at[r, self.table.cols_headers[3]],nbit)
+            #self.table.SelectedTx.emit(index,self.table.data.at[r, self.table.cols_headers[3]],nbit)
+        for index,_bit in self.list.ReadData[row]:
+            if index == -1:
+                self.picker.buttonPoint.click()
+            else:
+                _item = self.list.ReadList[row].index(index)
+                if _bit < len(self.picker.itemButton[_item]):
+                    self.picker.itemButton[_item][_bit].click()
+        self.picker.show()
+
+    def addrow_process(self,rowcount): # picker itemBasket parse
+        itemBasket = self.picker.itemBasket # itemBasket: [[0,bit],[1,bit],...]
+        index = self.picker.trueIndex       # True Index: [index_1,index_2，index_3,...]
         name = self.picker.nameInput.text()
         self.picker.close()
         self.picker = None
@@ -807,7 +1170,7 @@ class MainWindow(QtWidgets.QWidget):
             data = []
             range = ""
             for _ in itemBasket:
-                if _[0] is -1:
+                if _[0] is -1: # floating point .
                     if _ is not itemBasket[-1]:
                         data.append([-1, -1])
                         range = range[:-1] + "."
@@ -817,13 +1180,33 @@ class MainWindow(QtWidgets.QWidget):
                     range = range + str(row)+"["+str(_[1])+"],"
                     if row not in readlist:
                         readlist.append(row)
-            self.list.ReadData.append(data)
-            self.list.ReadList.append(readlist)
+            if rowcount is None:
+                self.list.ReadData.append(data)
+                self.list.ReadList.append(readlist)
+            else:
+                self.list.ReadData[rowcount-1] = data
+                self.list.ReadList[rowcount-1] = readlist
             range = range[:-1]
 
-            rowcount = self.list.rowCount()
-            self.list.insertRow(rowcount)
-            self.list.setItem(rowcount, 0, QtWidgets.QTableWidgetItem(name))
+            if rowcount is None:
+                rowcount = self.list.rowCount()
+                self.list.insertRow(rowcount)
+                self.list.setItem(rowcount, 0, QtWidgets.QTableWidgetItem(name))
+                button_read = QtWidgets.QPushButton('Read')
+                button_write = QtWidgets.QPushButton('Write')
+                button_read.setEnabled(SPIConnFlag)
+                button_write.setEnabled(SPIConnFlag)
+                button_read.clicked.connect(lambda *args, rowcount=rowcount: self.list.handleReadRunClicked(rowcount))
+                button_write.clicked.connect(lambda *args, rowcount=rowcount: self.list.handleWriteRunClicked(rowcount))
+                self.list.button_read.append(button_read)
+                self.list.button_write.append(button_write)
+                self.list.button_read_en.append(True)
+                self.list.button_write_en.append(True)
+                self.list.setCellWidget(rowcount, 4, button_read)
+                self.list.setCellWidget(rowcount, 5, button_write)
+            else:
+                pass
+
             _temp = QtWidgets.QTableWidgetItem()
             _temp.setData(QtCore.Qt.DisplayRole, range)
             _temp.setFlags(QtCore.Qt.ItemIsEnabled)
@@ -835,7 +1218,7 @@ class MainWindow(QtWidgets.QWidget):
                 self.list.setItem(rowcount, 3, _temp)
                 _format = "0" + str(len(data)) + "b"
                 _bin = format(0, _format)
-                self.list.data = self.list.data.append(pd.Series([name, range, _bin, 0], index=["Name","Range","Bin","Dec"]),
+                self.list.data = self.list.data.append(pd.Series([name, range, _bin, 0, len(data)], index=["Name","Range","Bin","Dec","Length"]),
                                                        ignore_index=True)
                 self.list.setItem(rowcount, 2, QtWidgets.QTableWidgetItem(_bin))
             else:
@@ -850,20 +1233,10 @@ class MainWindow(QtWidgets.QWidget):
                 _bin = format(0, _format) + "."
                 _format = "0" + str(len(data[_index:])-1) + "b"
                 _bin = _bin + format(0, _format)
-                self.list.data = self.list.data.append(pd.Series([name, range, _bin, 0.0], index=["Name","Range","Bin","Dec"]),
+                self.list.data = self.list.data.append(pd.Series([name, range, _bin, 0.0, len(data)], index=["Name","Range","Bin","Dec","Length"]),
                                                        ignore_index=True)
                 self.list.setItem(rowcount, 2, QtWidgets.QTableWidgetItem(_bin))
 
-            button_read = QtWidgets.QPushButton('Read')
-            button_write = QtWidgets.QPushButton('Write')
-            button_read.setEnabled(SPIConnFlag)
-            button_write.setEnabled(SPIConnFlag)
-            button_read.clicked.connect(lambda *args, rowcount=rowcount: self.list.handleReadRunClicked(rowcount))
-            button_write.clicked.connect(lambda *args, rowcount=rowcount: self.list.handleWriteRunClicked(rowcount))
-            self.list.button_read.append(button_read)
-            self.list.button_write.append(button_write)
-            self.list.setCellWidget(rowcount, 4, button_read)
-            self.list.setCellWidget(rowcount, 5, button_write)
             self.list.onLoading = False
 
     @QtCore.pyqtSlot()
@@ -874,7 +1247,7 @@ class MainWindow(QtWidgets.QWidget):
         self.lock_sc_switch()
 
     @QtCore.pyqtSlot(bool,int)
-    def handleBackbone(self,ReadWriteFlag,row):
+    def handleBackbone(self,ReadWriteFlag,row): # Shortcut list control
         if row is 0:
             if ReadWriteFlag is True:
                 for _ in range(len(self.table.button_read_en)):
@@ -896,7 +1269,18 @@ class MainWindow(QtWidgets.QWidget):
                     dictRead[r] = str(self.table.data.at[r, "BinR"])
                 for _ in self.list.ReadData[row]:
                     if _[0] is not -1:
-                        _bin = _bin + dictRead[_[0]-1][::-1][_[1]]
+                        if len(_) == 2:
+                            _bin = _bin + dictRead[_[0]-1][::-1][_[1]] # [::-1] string flip
+                        elif len(_) == 3:
+                            if _[2] == -1:
+                                _bin = _bin + dictRead[_[0]-1][::-1][_[1]:]
+                            else:
+                                _bin = _bin + dictRead[_[0]-1][::-1][_[1]:_[2]]
+                        elif len(_) == 4:
+                            if _[2] == -1:
+                                _bin = _bin + dictRead[_[0]-1][::-1][_[1]::_[3]]
+                            else:
+                                _bin = _bin + dictRead[_[0]-1][::-1][_[1]:_[2]:_[3]]
                     else:
                         _bin = _bin + "."
                 self.list.setItem(row+1, 2, QtWidgets.QTableWidgetItem(_bin))
@@ -908,15 +1292,26 @@ class MainWindow(QtWidgets.QWidget):
                     r = _ - 1
                     self.table.handleReadClicked(r)
                     dictWrite[r] = str(self.table.data.at[r, "BinR"])
-                _ = self.list.ReadData[row]
-                for index in range(len(self.list.ReadData[row])):
-                    if _[index][0] is not -1:
-                        _index = _[index][0] - 1
-                        sel = _[index][1]
-                        dictWrite[_index] = dictWrite[_index][::-1][:sel] + binWrite[index] + dictWrite[_index][::-1][sel+1:]
-                        dictWrite[_index] = dictWrite[_index][::-1]
+
+                for _ in self.list.ReadData[row]:
+                    if _[0] is not -1:
+                        _index = _[0] - 1
+                        string_list = list(dictWrite[_index][::-1])
+                        if len(_) == 2: # 1 bit
+                            string_list[_[1]] = binWrite[0]
+                            binWrite = binWrite[1:]
+                        elif len(_) == 3:
+                            string_list[_[1]:_[2]] = binWrite[0:_[2]-_[1]]
+                            binWrite = binWrite[_[2]-_[1]:]
+                        elif len(_) == 4:
+                            length = round((_[2]-_[1])/_[3])
+                            string_list[_[1]:_[2]:_[3]] = binWrite[0:length]
+                            binWrite = binWrite[length:]
+                        string_new = "".join(string_list)
+                        dictWrite[_index] = string_new[::-1]
                     else:
                         continue
+
                 for _ in self.list.ReadList[row]:
                     r = _ - 1
                     self.table.setItem(r, 12, QtWidgets.QTableWidgetItem(dictWrite[r]))
@@ -978,6 +1373,9 @@ class MainWindow(QtWidgets.QWidget):
             self.vol_button.setText("Show Voltage")
 
     def closeEvent(self, event):
+        f = open('config.spi', 'wb')
+        pkl.dump((self.table.data, self.list.data, self.list.ReadData, self.list.ReadList), f)
+        f.close()
         if self.led.ConnFlag is True:
             ni8452.ni845xSpiConfigurationClose()
             ni8452.ni845xClose()
@@ -1013,6 +1411,48 @@ class MainWindow(QtWidgets.QWidget):
         if (path):
             FileIO.df2csv(path,self.table.data)
 
+    @QtCore.pyqtSlot(list,int)
+    def length_data(self,ReadData,row):
+        count = 0
+        print("pass")
+        for _ in ReadData:
+            if type(_) is int:
+                _length = intSafe(self.table.data.at[_-1, "EnbBits"])
+                if _length is not None:
+                    count = count + _length
+            elif len(_) ==2:
+                if _[0] != -1:
+                    count = count + 1
+            elif len(_) ==3:
+                count = count + _[2] - _[1]
+            elif len(_) ==4:
+                count = count + round((_[2] - _[1])/_[3])
+            else:
+                pass
+        self.list.data.at[row, "Length"] = int(count)
+
+    @QtCore.pyqtSlot(int)
+    def TableVisual(self,index):
+
+        if index ==1:
+            df = self.table.data
+        elif index == 2:
+            df = self.list.data
+        elif index == 3:
+            df = self.list.ReadList
+        else:
+            df = self.list.ReadData
+
+        if index in [1,2]:
+            winlut = LUTShow(df,self)
+            width = df.shape[1] * 80 + 20
+        else:
+            winlut = ArrayShow(df,self)
+            width = winlut.columnCount() * 80 + 20
+        winlut.setWindowFlags(winlut.windowFlags() | QtCore.Qt.Window)
+        #winlut.setFixedSize(width,self.height())
+        winlut.setGeometry(100,50,width,self.height())
+        winlut.show()
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
