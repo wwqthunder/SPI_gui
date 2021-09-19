@@ -61,6 +61,12 @@ class LoadTable(QtWidgets.QTableWidget):
 
         self.setHorizontalHeaderLabels(self.cols_headers)
         self.horizontalHeader().setHighlightSections(True)
+        self.horizontalHeader().sectionClicked.connect(self.columnfilterclicked)
+        self.FilterConfig = [dict([(str(_), True) for _ in self.data.iloc[:, idx].drop_duplicates().tolist()]) for idx
+                             in range(8)]
+        self.keywords = dict([(i, []) for i in range(8)])
+        self.checkBoxs = []
+
         # Draw Borders for Cols' Headers on Win10
         self.horizontalHeader().setStyleSheet("QHeaderView::section{"
             "border-top:0px solid #D8D8D8;"
@@ -224,7 +230,13 @@ class LoadTable(QtWidgets.QTableWidget):
                     self.onLoading = False
                     self.blockSignals(False)
                     return
+            _pre = self.data.at[r,self.cols_headers[c]]
             self.data.at[r,self.cols_headers[c]] = text
+            if c < 8:
+                if _pre not in self.data[self.data_headers[c]].values.tolist():
+                    del self.FilterConfig[c][str(_pre)]
+                if text not in self.FilterConfig[c]:
+                    self.FilterConfig[c][str(text)] = True
             # Bin Dec data sync
             if c is 13 and str(self.data.at[r,"EnbBits"]).isdigit():
                 if int(self.data.at[r,"EnbBits"]) is not 0:
@@ -296,7 +308,137 @@ class LoadTable(QtWidgets.QTableWidget):
                 self.SelectedTx.emit(r+1,self.data.at[r, self.cols_headers[3]],nbit)
 
 
+    def menuClose(self):
+        self.keywords[self.col] = []
+        for element in self.checkBoxs:
+            if element.isChecked():
+                self.keywords[self.col].append(element.text())
+        self.filterdata()
+        self.FilterMenu.close()
 
+    def clearFilter(self):
+        if self.rowCount() > 0:
+            for i in range(self.rowCount()):
+                self.setRowHidden(i, False)
+
+    def filterdata(self):
+        columnsShow = dict([(i, True) for i in range(self.rowCount())])
+
+        for i in range(self.rowCount()):
+            for j in range(8):
+                item = self.item(i, j)
+                if self.keywords[j]:
+                    if item.text() not in self.keywords[j]:
+                        columnsShow[i] = False
+        for key in columnsShow:
+            self.setRowHidden(key, not columnsShow[key])
+
+    def processtrigger(self, qaction):
+        if qaction.text() == "sort from low to high":
+            print(True)
+        elif qaction.text() == "sort from high to low":
+            print(False)
+        else:
+            print(qaction.text() + " is triggered!")
+
+
+    def columnfilterclicked(self,index):
+        if index > 7:
+            return
+        self.FilterMenu = QtWidgets.QMenu()
+        self.col = index
+
+        self.checkBoxs = []
+
+        sortLH = QtWidgets.QAction("sort from low to high", self.FilterMenu)
+        sortHL = QtWidgets.QAction("sort from high to low", self.FilterMenu)
+        #sortLH.setShortcut('Ctrl+S')
+        self.FilterMenu.addAction(sortLH)
+        self.FilterMenu.addAction(sortHL)
+        self.FilterMenu.triggered[QtWidgets.QAction].connect(self.processtrigger)
+        self.FilterMenu.addSeparator()
+
+        # Search Edit
+        self.searchLine = QtWidgets.QLineEdit()
+        self.searchLine.setPlaceholderText("Search")
+        EditAction = QtWidgets.QWidgetAction(self.FilterMenu)
+        EditAction.setDefaultWidget(self.searchLine)
+        self.FilterMenu.addAction(EditAction)
+        # List Widget
+        self.listWidget = QtWidgets.QListWidget(self.FilterMenu)
+        self.listWidget.setStyleSheet("margin-top:5px;margin-bottom:5px")
+        ListAction = QtWidgets.QWidgetAction(self.FilterMenu)
+        ListAction.setDefaultWidget(self.listWidget)
+        self.FilterMenu.addAction(ListAction)
+
+        self.checkBox_all = QtWidgets.QCheckBox("Select all", self.FilterMenu)
+        row = QtWidgets.QListWidgetItem()
+        self.listWidget.addItem(row)
+        self.listWidget.setItemWidget(row, self.checkBox_all)
+
+        self.checkBox_all.stateChanged.connect(self.slotSelect)
+
+        selectAll_check = True
+        selectAll_uncheck = False
+        for key, value in self.FilterConfig[index].items():
+            checkBox = QtWidgets.QCheckBox(key)
+            checkBox.setChecked(value)
+            checkBox.stateChanged.connect(lambda state, index=index, key=key: self.filterConfigChanged(state,index,key))
+            selectAll_check = selectAll_check and value
+            selectAll_uncheck = selectAll_uncheck or value
+            row = QtWidgets.QListWidgetItem()
+            self.listWidget.addItem(row)
+            self.listWidget.setItemWidget(row, checkBox)
+            self.checkBoxs.append(checkBox)
+
+        if selectAll_check is True:
+            self.checkBox_all.setChecked(True)
+        elif selectAll_uncheck is False:
+            self.checkBox_all.setChecked(False)
+        else:
+            self.checkBox_all.setCheckState(QtCore.Qt.PartiallyChecked)
+
+
+        btn = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
+                                         QtCore.Qt.Horizontal, self.FilterMenu)
+        btn.accepted.connect(lambda *args, index=index: self.filter(index))
+        btn.rejected.connect(self.FilterMenu.close)
+        checkableAction = QtWidgets.QWidgetAction(self.FilterMenu)
+        checkableAction.setDefaultWidget(btn)
+        self.FilterMenu.addAction(checkableAction)
+
+        headerPos = self.mapToGlobal(self.horizontalHeader().pos())
+        #headerPos = self.horizontalHeader().pos()
+        posY = headerPos.y() + self.horizontalHeader().height()
+        posX = headerPos.x() + self.horizontalHeader().sectionPosition(index)
+        print(posX)
+        print(posY)
+        self.FilterMenu.exec_(QtCore.QPoint(posX, posY))
+
+    def slotSelect(self, state):
+        if state != QtCore.Qt.PartiallyChecked:
+            self.checkBox_all.setTristate(False)
+            for checkbox in self.checkBoxs:
+                checkbox.setChecked(QtCore.Qt.Checked == state)
+
+    def filterConfigChanged(self,state,index,key):
+        self.FilterConfig[index][key] = (QtCore.Qt.Checked == state)
+        if all(self.FilterConfig[index].values()):
+            self.checkBox_all.setChecked(True)
+            self.checkBox_all.setTristate(False)
+        elif any(self.FilterConfig[index].values()):
+            self.checkBox_all.setCheckState(QtCore.Qt.PartiallyChecked)
+        else:
+            self.checkBox_all.setChecked(False)
+            self.checkBox_all.setTristate(False)
+
+    def filter(self,index):
+        for idx, value in self.data.iloc[:, index].items():
+            if self.FilterConfig[index][str(value)] is False:
+                self.setRowHidden(idx, True)
+            else:
+                self.setRowHidden(idx, False)
+        self.FilterMenu.close()
 
     def dataload(self, load_flag):
         if load_flag is False:
@@ -310,6 +452,8 @@ class LoadTable(QtWidgets.QTableWidget):
                     return
             else:
                 return
+        self.FilterConfig = [dict([(str(_), True) for _ in self.data.iloc[:, idx].drop_duplicates().tolist()]) for idx
+                             in range(8)]
         self.onLoading = True
         self.setRowCount(0)
         self.setRowCount(self.data.shape[0])
@@ -1129,6 +1273,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     def EditCaller(self):
+        if len(self.list.selectedIndexes()) is 0:
+            return
         if self.picker is not None:
             self.picker.close()
         self.picker = Picker()
