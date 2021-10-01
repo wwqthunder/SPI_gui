@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import xml.etree.ElementTree as ET
-from lxml import etree
+#from lxml import etree
 cols_headers = ["SS","Addr","Sel","Name","VolMax","VolMin","DataSize","EnbBits","BinR","DecR","VolR","BinW","DecW","VolW"]
 cols_box = ["SS","Addr","Sel","Name","VolMax","VolMin","DataSize","EnbBits","BinVal","DecVal"]
 def load(path):

@@ -45,6 +45,7 @@ def spi_write(add,data,size):
 # Main Control Table
 class LoadTable(QtWidgets.QTableWidget):
     SelectedTx = QtCore.pyqtSignal(int,str,int)
+    Table2ListSync = QtCore.pyqtSignal(int)
     def __init__(self,parent=None):
         super(LoadTable, self).__init__(0,16,parent)
         self.data = pd.DataFrame()
@@ -253,6 +254,9 @@ class LoadTable(QtWidgets.QTableWidget):
                         _temp.setData(QtCore.Qt.EditRole,_vol)
                         self.setItem(r, 14, _temp)
                         self.item(r, 14).setTextAlignment(QtCore.Qt.AlignCenter)
+                    # self.blockSignals(False)
+                    # self.Table2ListSync.emit(r)
+                    # self.blockSignals(True)
             elif c is 12:
                 _dec = int(text,2)
                 self.data.at[r, self.cols_headers[13]] = _dec
@@ -676,7 +680,7 @@ class LoadTable(QtWidgets.QTableWidget):
         _temp.setData(QtCore.Qt.DisplayRole, _bin)
         _temp.setFlags(QtCore.Qt.ItemIsEnabled)
         self.setItem(r, 8, _temp)
-
+        self.Table2ListSync.emit(r)
         _vol = self.dec2voltage(self.data.at[r,"VolMax"],self.data.at[r,"VolMin"],res,self.data.at[r,"EnbBits"])
         if _vol is not None:
             _temp = QtWidgets.QTableWidgetItem()
@@ -792,14 +796,14 @@ class ShortCutList(QtWidgets.QTableWidget):
 
         button_read = QtWidgets.QPushButton('Read')
         button_write = QtWidgets.QPushButton('Write')
-        button_read.setEnabled(SPIConnFlag)
-        button_write.setEnabled(SPIConnFlag)
+        button_read.setEnabled(True)
+        button_write.setEnabled(True)
         button_read.clicked.connect(lambda *args, rowcount=0: self.handleReadRunClicked(rowcount))
         button_write.clicked.connect(lambda *args, rowcount=0: self.handleWriteRunClicked(rowcount))
         self.button_read.append(button_read)
         self.button_write.append(button_write)
-        self.button_read_en.append(SPIConnFlag)
-        self.button_write_en.append(SPIConnFlag)
+        self.button_read_en.append(True)
+        self.button_write_en.append(True)
         self.setCellWidget(0, 4, button_read)
         self.setCellWidget(0, 5, button_write)
         self.cellChanged.connect(self._cellchanged)
@@ -945,8 +949,8 @@ class ShortCutList(QtWidgets.QTableWidget):
             button_write.clicked.connect(lambda *args, rowcount=index: self.handleWriteRunClicked(rowcount))
             self.button_read.append(button_read)
             self.button_write.append(button_write)
-            self.button_read_en.append(SPIConnFlag)
-            self.button_write_en.append(SPIConnFlag)
+            self.button_read_en.append(True)
+            self.button_write_en.append(True)
             self.setCellWidget(index+1, 4, button_read)
             self.setCellWidget(index+1, 5, button_write)
         self.onLoading = False
@@ -1073,6 +1077,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.table = LoadTable()
         self.list = ShortCutList()
         self.var = VarTable()
+        self.table.Table2ListSync.connect(self.pickersync)
         self.list.Tx.connect(self.handleBackbone)
         self.list.dataset.connect(self.length_data)
 
@@ -1177,14 +1182,20 @@ class MainWindow(QtWidgets.QMainWindow):
         button_box3 = QtWidgets.QGroupBox("Variables")
         button_box3.setLayout(button_layout3)
 
-        tablehbox = QtWidgets.QHBoxLayout()
-        tablehbox_right = QtWidgets.QVBoxLayout()
+        tablespliter = QtWidgets.QSplitter()
+        tablespliter.addWidget(self.table)
+        tablespliter.addWidget(self.list)
+        tablespliter.setStretchFactor(0, 7)
+        tablespliter.setStretchFactor(1, 3)
+        tablespliter.setSizePolicy(QtWidgets.QSizePolicy.Expanding,QtWidgets.QSizePolicy.Expanding)
+        #tablehbox = QtWidgets.QHBoxLayout()
+        #tablehbox_right = QtWidgets.QVBoxLayout()
         #tablehbox.setContentsMargins(10, 10, 10, 10)
-        tablehbox_right.addWidget(self.list)
+        #tablehbox_right.addWidget(self.list)
         #£tablehbox_right.addWidget(self.var)
         #tablehbox_right.addWidget(button_box3)
-        tablehbox.addWidget(self.table,7)
-        tablehbox.addLayout(tablehbox_right,3)
+        #tablehbox.addWidget(self.table,7)
+        #tablehbox.addWidget(self.list,3)
         #tablehbox.addWidget(self.list,3)
 
         self.combox_clk = QtWidgets.QComboBox(self)
@@ -1224,16 +1235,17 @@ class MainWindow(QtWidgets.QMainWindow):
         #ctrlbox.addLayout(button_layout)
         #ctrlbox.setContentsMargins(10, 200, 10, 200)
 
-        mainlayouot = QtWidgets.QVBoxLayout()
-        tablehbox.setContentsMargins(10, 10, 10, 10)
-        mainlayouot.addWidget(setupbox)
-        mainlayouot.addLayout(button_layout)
+        mainlayout = QtWidgets.QVBoxLayout()
+        #tablehbox.setContentsMargins(10, 10, 10, 10)
+        mainlayout.addWidget(setupbox)
+        mainlayout.addLayout(button_layout)
         #grid = QtWidgets.QGridLayout(self)
         #grid.addLayout(ctrlbox, 0, 1)
         #grid.addLayout(tablehbox, 0, 0)
-        mainlayouot.addLayout(tablehbox)
+        #mainlayout.addLayout(tablehbox)
+        mainlayout.addWidget(tablespliter)
         qWidget = QtWidgets.QWidget()
-        qWidget.setLayout(mainlayouot)
+        qWidget.setLayout(mainlayout)
         self.setCentralWidget(qWidget)
         if ni8452.dll_flag is False:
             self.button_connect.setEnabled(False)
@@ -1259,7 +1271,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.picker is not None:
             self.picker.close()
         self.picker = Picker()
-        self.picker.buttonApply.clicked.connect(lambda row=None: self.addrow_process(row))
+        self.picker.buttonApply.clicked.connect(lambda *args, row=None: self.addrow_process(row))
         self.picker.CloseSignal.connect(self.pickerClose)
         self.table.SelectedTx.connect(self.picker.additem)
         self.picker.show()
@@ -1279,7 +1291,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.picker.close()
         self.picker = Picker()
         row = self.list.selectedIndexes()[0].row() -1
-        self.picker.buttonApply.clicked.connect(lambda row=row: self.addrow_process(row+1))
+        self.picker.buttonApply.clicked.connect(lambda *args, row=row: self.addrow_process(row+1))
         self.picker.CloseSignal.connect(self.pickerClose)
         self.table.SelectedTx.connect(self.picker.additem)
         self.picker.nameInput.setText(self.list.data.at[row, "Name"])
@@ -1391,6 +1403,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lock_button_sc.setEnabled(True)
         self.lock_switch()
         self.lock_sc_switch()
+
+    @QtCore.pyqtSlot(int)
+    def pickersync(self,index):
+        for row in range(len(self.list.ReadList)):
+            for _ in self.list.ReadList[row]:
+                if _ == index+1:
+                    r = _ - 1
+                    read_data = str(self.table.data.at[r, "BinR"][::-1])
+                    list_data = list(self.list.data.at[row,"Bin"])
+                    count = 0
+                    for _idx,bit in self.list.ReadData[row]:
+                        if _idx == index+1:
+                            list_data[count] = read_data[bit]
+                        count = count + 1
+                    _bin = "".join(list_data)
+                    self.list.setItem(row+1, 2, QtWidgets.QTableWidgetItem(_bin))
+
 
     @QtCore.pyqtSlot(bool,int)
     def handleBackbone(self,ReadWriteFlag,row): # Shortcut list control
@@ -1553,6 +1582,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.lock_button_sc.setText("Lock")
 
     def save_data(self):
+        f = open('config.spi', 'wb')
+        pkl.dump((self.table.data, self.list.data, self.list.ReadData, self.list.ReadList), f)
+        f.close()
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save SPI Data", os.getcwd(), "CSV Files (*.csv)")
         if (path):
             FileIO.df2csv(path,self.table.data)
