@@ -2,7 +2,7 @@ import sys
 import os
 from PyQt5 import QtCore, QtGui, QtWidgets
 import FileIO
-import led
+import led  
 import pandas as pd
 import ni845x_if as ni
 import numpy as np
@@ -15,29 +15,29 @@ from lut import LUT,LUTShow,ArrayShow
 ni8452 = ni.ni845x_if()
 SPIConnFlag = bool(False)
 
-def spi_read(add,size):
+def spi_read(cs,add,size):
     size = np.int(size)
     if size < 6:
         cmd = 2
-        ret = ni8452.ni845xSpiWriteRead([((cmd << 5) + (add >> 3)) % 256, (add << 5) %256])
+        ret = ni8452.ni845xSpiWriteRead(cs,[((cmd << 5) + (add >> 3)) % 256, (add << 5) %256])
         print("Addr:"+str(add)+"_Rd:"+str(ret[1] % 32))
         return (ret[1] % 32)
     else:
         cmd = 1
-        ret = ni8452.ni845xSpiWriteRead([((cmd << 5) + (add >> 3)) % 256, (add << 5) % 256, 0])
+        ret = ni8452.ni845xSpiWriteRead(cs,[((cmd << 5) + (add >> 3)) % 256, (add << 5) % 256, 0])
         print("Addr:" + str(add) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2] % 256))
         return ((ret[1] % 32) * 256 + ret[2] % 256)
 
-def spi_write(add,data,size):
+def spi_write(cs,add,data,size):
     data = np.int(data)
     size = np.int(size)
     if size < 6:
         cmd = 6
-        ret = ni8452.ni845xSpiWriteRead([((cmd << 5) + (add >> 3)) % 256, ((add << 5) + data) %256])
+        ret = ni8452.ni845xSpiWriteRead(cs,[((cmd << 5) + (add >> 3)) % 256, ((add << 5) + data) %256])
         print('Wr:'+str(data)+"_Rd:"+str(ret[1] % 32))
     else:
         cmd = 5
-        ret = ni8452.ni845xSpiWriteRead([((cmd << 5) + (add >> 3)) % 256, ((add << 5) + (data >> 8)) % 256, data % 256])
+        ret = ni8452.ni845xSpiWriteRead(cs,[((cmd << 5) + (add >> 3)) % 256, ((add << 5) + (data >> 8)) % 256, data % 256])
         print('Wr:' + str(data) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2] % 256))
 
 
@@ -657,11 +657,12 @@ class LoadTable(QtWidgets.QTableWidget):
 
     @QtCore.pyqtSlot(int)
     def handleReadClicked(self,r):
+        cs =  int(self.data.at[r, "SS"])
         size = int(self.data.at[r, "DataSize"])
         Addr = int(self.data.at[r, "Addr"])
         Sel =  int(self.data.at[r, "Sel"])
         nBits = int(self.data.at[r, "EnbBits"])
-        res = spi_read(Addr,size)
+        res = spi_read(cs,Addr,size)
         if Sel == 0:
             if size is not nBits:
                 res = res % (2 ** nBits)
@@ -691,18 +692,19 @@ class LoadTable(QtWidgets.QTableWidget):
 
     @QtCore.pyqtSlot(int)
     def handleWriteClicked(self, r):
+        cs = int(self.data.at[r, "SS"])
         data = int(self.data.at[r, "DecW"])
         size = int(self.data.at[r, "DataSize"])
         Addr = int(self.data.at[r, "Addr"])
         Sel =  int(self.data.at[r, "Sel"])
         nBits = int(self.data.at[r, "EnbBits"])
         if Sel is not 0:
-            res = spi_read(Addr, size)
+            res = spi_read(cs, Addr, size)
             _format = "0" + str(size) + "b"
             _mask = 2 ** size - 1 - (2 ** nBits - 1) * (2 ** (Sel - 1))
             mask = format(_mask, _format)
             data = (res & int(mask,2)) | (data << (Sel - 1))
-        spi_write(int(Addr), data, size)
+        spi_write(cs, int(Addr), data, size)
         self.handleReadClicked(r)
 
     def button_update(self):
@@ -1141,9 +1143,12 @@ class MainWindow(QtWidgets.QMainWindow):
         button_box1 = QtWidgets.QGroupBox("Main Table")
         button_box1.setLayout(button_layout1)
 
-        self.add_button_sc = QtWidgets.QPushButton("Edit")
+        self.add_button_sc = QtWidgets.QPushButton("Add")
         self.add_button_sc.setFixedSize(QtCore.QSize(100, 30))
-        self.add_button_sc.clicked.connect(self.EditCaller)
+        self.add_button_sc.clicked.connect(self.list.addrow)
+        self.edit_button_sc = QtWidgets.QPushButton("Edit")
+        self.edit_button_sc.setFixedSize(QtCore.QSize(100, 30))
+        self.edit_button_sc.clicked.connect(self.EditCaller)
         self.picker_button_sc = QtWidgets.QPushButton("Picker")
         self.picker_button_sc.setFixedSize(QtCore.QSize(100, 30))
         self.picker_button_sc.clicked.connect(self.PickerCaller)
@@ -1156,6 +1161,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         button_layout2 = QtWidgets.QHBoxLayout()
         button_layout2.addWidget(self.add_button_sc)
+        button_layout2.addWidget(self.edit_button_sc)
         button_layout2.addWidget(self.picker_button_sc)
         button_layout2.addWidget(self.delete_button_sc)
         button_layout2.addWidget(self.lock_button_sc)
@@ -1461,36 +1467,41 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.list.setItem(row+1, 2, QtWidgets.QTableWidgetItem(_bin))
             else:
                 #Write
-                dictWrite = {}
-                binWrite = self.list.item(row+1, 2).text()
-                for _ in self.list.ReadList[row]:
-                    r = _ - 1
-                    self.table.handleReadClicked(r)
-                    dictWrite[r] = str(self.table.data.at[r, "BinR"])
+                if len(self.list.ReadData[row]) == 0:
+                    for _ in self.list.ReadList[row]:
+                        r = _ - 1
+                        self.table.handleWriteClicked(r)
+                else:
+                    dictWrite = {}
+                    binWrite = self.list.item(row+1, 2).text()
+                    for _ in self.list.ReadList[row]:
+                        r = _ - 1
+                        self.table.handleReadClicked(r)
+                        dictWrite[r] = str(self.table.data.at[r, "BinR"])
 
-                for _ in self.list.ReadData[row]:
-                    if _[0] is not -1:
-                        _index = _[0] - 1
-                        string_list = list(dictWrite[_index][::-1])
-                        if len(_) == 2: # 1 bit
-                            string_list[_[1]] = binWrite[0]
-                            binWrite = binWrite[1:]
-                        elif len(_) == 3:
-                            string_list[_[1]:_[2]] = binWrite[0:_[2]-_[1]]
-                            binWrite = binWrite[_[2]-_[1]:]
-                        elif len(_) == 4:
-                            length = round((_[2]-_[1])/_[3])
-                            string_list[_[1]:_[2]:_[3]] = binWrite[0:length]
-                            binWrite = binWrite[length:]
-                        string_new = "".join(string_list)
-                        dictWrite[_index] = string_new[::-1]
-                    else:
-                        continue
+                    for _ in self.list.ReadData[row]:
+                        if _[0] is not -1:
+                            _index = _[0] - 1
+                            string_list = list(dictWrite[_index][::-1])
+                            if len(_) == 2: # 1 bit
+                                string_list[_[1]] = binWrite[0]
+                                binWrite = binWrite[1:]
+                            elif len(_) == 3:
+                                string_list[_[1]:_[2]] = binWrite[0:_[2]-_[1]]
+                                binWrite = binWrite[_[2]-_[1]:]
+                            elif len(_) == 4:
+                                length = round((_[2]-_[1])/_[3])
+                                string_list[_[1]:_[2]:_[3]] = binWrite[0:length]
+                                binWrite = binWrite[length:]
+                            string_new = "".join(string_list)
+                            dictWrite[_index] = string_new[::-1]
+                        else:
+                            continue
 
-                for _ in self.list.ReadList[row]:
-                    r = _ - 1
-                    self.table.setItem(r, 12, QtWidgets.QTableWidgetItem(dictWrite[r]))
-                    self.table.handleWriteClicked(r)
+                    for _ in self.list.ReadList[row]:
+                        r = _ - 1
+                        self.table.setItem(r, 12, QtWidgets.QTableWidgetItem(dictWrite[r]))
+                        self.table.handleWriteClicked(r)
 
     @QtCore.pyqtSlot()
     def spi_switch(self):
@@ -1505,7 +1516,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 print(ret)
                 ni8452.ni845xSetIoVoltageLevel(int(float(self.combox_vol.currentText())*10))
                 ni8452.ni845xSpiConfigurationOpen()
-                ni8452.ni845xSpiConfigurationSetChipSelect(0)
+                #ni8452.ni845xSpiConfigurationSetChipSelect(0)
                 ni8452.ni845xSpiConfigurationSetClockRate(int(self.combox_clk.currentText()))
                 ni8452.ni845xSpiConfigurationSetClockPolarity(0)
                 ni8452.ni845xSpiConfigurationSetClockPhase(0)
@@ -1573,11 +1584,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.lock_button_sc.text() == "Lock":
             self.list.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
             self.add_button_sc.setEnabled(False)
+            self.edit_button_sc.setEnabled(False)
             self.delete_button_sc.setEnabled(False)
             self.lock_button_sc.setText("Unlock")
         else:
             self.list.setEditTriggers(QtWidgets.QAbstractItemView.DoubleClicked)
             self.add_button_sc.setEnabled(True)
+            self.edit_button_sc.setEnabled(True)
             self.delete_button_sc.setEnabled(True)
             self.lock_button_sc.setText("Lock")
 
@@ -1611,7 +1624,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot(int)
     def TableVisual(self,index):
-
         if index ==1:
             df = self.table.data
         elif index == 2:
@@ -1631,6 +1643,17 @@ class MainWindow(QtWidgets.QMainWindow):
         #winlut.setFixedSize(width,self.height())
         winlut.setGeometry(100,50,width,self.height())
         winlut.show()
+
+    def auto_picker(self):
+        pre_dict = {}
+        name_list = self.table["Name"].tolist()
+        for _ in name_list:
+            if '<' in _ and '>' in _:
+                if ',' in _:
+                    pass
+                else:
+                    pass
+
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)

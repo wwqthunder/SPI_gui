@@ -28,30 +28,22 @@ def Bin2FixPointFloat(_bin):
     else:
         return float(int(_bin, 2))
 
-def RangeParse(range):
+def RangeParse(text):
     PickerFlag = True
-    if '[' not in range and ']' not in range:
+    if '[' not in text and ']' not in text:
         PickerFlag = False
-    range = range.replace(" ", "")
-    if range.count('.') == 1:
-        range = range.replace(".", ",.,")
-    elif range.count('.') > 1:
-        return None,None
-    bit_list = re.split(r',(?![^[]*\])',range)
+    text = text.replace(" ", "")
+    if text.count('.') == 1:
+        text = text.replace(".", ",.,")
+    elif text.count('.') > 1:
+        return [],[]
+    bit_list = re.split(r',(?![^[]*\])', text)
     # split with , outside []
 
     ReadList = []
     ReadData = []
     for _ in bit_list:
-        if _.isdigit() is True:
-            ReadData.append(int(_))
-            if int(_) not in ReadList:
-                ReadList.append(int(_))
-        elif _ == '.':
-            ReadData.append([-1,-1])
-        elif _ == '':
-            pass
-        elif PickerFlag is False:
+        if PickerFlag is False:
             rows = BitParse(_)
             if rows is not None:
                 for row in rows:
@@ -59,15 +51,23 @@ def RangeParse(range):
                         if row[0] not in ReadList:
                             ReadList.append(row[0])
                     elif len(row) == 2:
-                        for _ in range(row[0],row[1]):
+                        for _ in range(row[0], row[1]):
                             if _ not in ReadList:
                                 ReadList.append(_)
                     elif len(row) == 3:
-                        for _ in range(row[0],row[1],row[2]):
+                        for _ in range(row[0], row[1], row[2]):
                             if _ not in ReadList:
                                 ReadList.append(_)
             else:
-                return None,None
+                return [],[]
+        elif _.isdigit() is True:
+            ReadData.append(int(_))
+            if int(_) not in ReadList:
+                ReadList.append(int(_))
+        elif _ == '.':
+            ReadData.append([-1,-1])
+        elif _ == '':
+            pass
         else:
             # Validate
             index = IndexParse(_)
@@ -84,11 +84,11 @@ def RangeParse(range):
                     else:
                         continue
                 else:
-                    return None,None
+                    return [],[]
             else:
-                return None,None
+                return [],[]
     if PickerFlag is False:
-        return None,ReadList
+        return [],ReadList
     else:
         return ReadData, ReadList
 
@@ -197,7 +197,7 @@ if __name__ == '__main__':
     print(type(test) is list)
     test = "123 2 2 "
     test.replace(" ","")
-    print(BitParse("1:2:5"))
+    print(BitParse("12-14"))
             #if _[-1] == ']' and
     pass
 

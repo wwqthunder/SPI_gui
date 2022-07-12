@@ -195,7 +195,7 @@ class ni845x_if:
         print("Return values of ni845xSpiConfigurationSetClockPhase: ", returnValue)
 
 
-    def  ni845xSpiWriteRead(self, WriteData):
+    def  ni845xSpiWriteRead(self, cs, WriteData):
         """
         Calls NI USB-8452 C API function ni845xSpiWriteRead whose prototype is:
         void ni845xSpiWriteRead (NiHandle ScriptHandle, uInt32 WriteSize, uInt8 * pWriteData, uInt32 * pReadSize, uInt8 * pReadData);
@@ -207,6 +207,7 @@ class ni845x_if:
         rsize = c.c_uint32(1)
         rbuf_type = c.c_byte * 4;
         rbuf = rbuf_type(*[0,0,0,0])
+        ret = self.i2c.ni845xSpiConfigurationSetChipSelect(self.spi_handle, cs)
         returnValue = self.i2c.ni845xSpiWriteRead(self.device_handle, self.spi_handle, wsize, c.byref(wbuf), c.byref(rsize), c.byref(rbuf))
         print("wsize", wsize)
         print("rsize", rsize)

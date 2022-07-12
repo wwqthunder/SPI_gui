@@ -127,6 +127,7 @@ class Picker(QtWidgets.QWidget):
 
             self.itemButton.append(_itemButton)
             _label = QtWidgets.QLabel(str(nitem+1) + ". " + str(index) + "." + str(name)+": ")
+            _label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
             self.labelList.append(_label)
             self.itemForm.addRow(_label, itembox)
 
