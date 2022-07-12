@@ -832,6 +832,7 @@ class ShortCutList(QtWidgets.QTableWidget):
                 self.ReadList[row] = _ReadList
                 if _ReadList is not None:
                     self.button_read_en[r] = True
+                    self.button_write_en[r] = True
                     self.setItem(r, c, _temp)
                     if _ReadData is None:
                         _temp = QtWidgets.QTableWidgetItem()
@@ -842,7 +843,6 @@ class ShortCutList(QtWidgets.QTableWidget):
                         _temp.setData(QtCore.Qt.DisplayRole, "")
                         _temp.setFlags(QtCore.Qt.ItemIsEnabled)
                         self.setItem(r, 3, _temp)
-                        self.button_write_en[r] = True
                     else:
                         self.blockSignals(False)
                         print(row)
@@ -854,6 +854,9 @@ class ShortCutList(QtWidgets.QTableWidget):
                     _temp.setForeground(QtGui.QColor(255, 0, 0))
                     self.setItem(r, c, _temp)
                 self.item(r, c).setTextAlignment(QtCore.Qt.AlignCenter)
+                self.button_read[r].setEnabled(SPIConnFlag and self.button_read_en[r])
+                self.button_write[r].setEnabled(SPIConnFlag and self.button_write_en[r])
+
 
             elif c is 2:
                 if self.ReadData[row] is None:
@@ -923,8 +926,10 @@ class ShortCutList(QtWidgets.QTableWidget):
     def dataload(self):
         self.onLoading = True
         self.setRowCount(self.data.shape[0]+1)
-        self.button_read = []
-        self.button_write = []
+        self.button_read = [self.button_read[0]]
+        self.button_write = [self.button_write[0]]
+        self.button_read_en = [self.button_read_en[0]]
+        self.button_write_en = [self.button_write_en[0]]
         self.ReadData = []
         self.ReadList = []
         for index, row in self.data.iterrows():
@@ -947,8 +952,8 @@ class ShortCutList(QtWidgets.QTableWidget):
             button_write = QtWidgets.QPushButton('Write')
             button_read.setEnabled(SPIConnFlag)
             button_write.setEnabled(SPIConnFlag)
-            button_read.clicked.connect(lambda *args, rowcount=index: self.handleReadRunClicked(rowcount))
-            button_write.clicked.connect(lambda *args, rowcount=index: self.handleWriteRunClicked(rowcount))
+            button_read.clicked.connect(lambda *args, rowcount=index+1: self.handleReadRunClicked(rowcount))
+            button_write.clicked.connect(lambda *args, rowcount=index+1: self.handleWriteRunClicked(rowcount))
             self.button_read.append(button_read)
             self.button_write.append(button_write)
             self.button_read_en.append(True)
@@ -1413,22 +1418,26 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot(int)
     def pickersync(self,index):
         for row in range(len(self.list.ReadList)):
-            for _ in self.list.ReadList[row]:
-                if _ == index+1:
-                    r = _ - 1
-                    read_data = str(self.table.data.at[r, "BinR"][::-1])
-                    list_data = list(self.list.data.at[row,"Bin"])
-                    count = 0
-                    for _idx,bit in self.list.ReadData[row]:
-                        if _idx == index+1:
-                            list_data[count] = read_data[bit]
-                        count = count + 1
-                    _bin = "".join(list_data)
-                    self.list.setItem(row+1, 2, QtWidgets.QTableWidgetItem(_bin))
+            if len(self.list.ReadData[row]) == 0:
+                continue
+            else:
+                for _ in self.list.ReadList[row]:
+                    if _ == index+1:
+                        r = _ - 1
+                        read_data = str(self.table.data.at[r, "BinR"][::-1])
+                        list_data = list(self.list.data.at[row,"Bin"])
+                        count = 0
+                        for _idx,bit in self.list.ReadData[row]:
+                            if _idx == index+1:
+                                list_data[count] = read_data[bit]
+                            count = count + 1
+                        _bin = "".join(list_data)
+                        self.list.setItem(row+1, 2, QtWidgets.QTableWidgetItem(_bin))
 
 
     @QtCore.pyqtSlot(bool,int)
-    def handleBackbone(self,ReadWriteFlag,row): # Shortcut list control
+    def handleBackbone(self,ReadWriteFlag,row):  # Shortcut list control
+        print(row)
         if row is 0:
             if ReadWriteFlag is True:
                 for _ in range(len(self.table.button_read_en)):
@@ -1440,7 +1449,17 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.table.handleWriteClicked(_)
         else:
             row = row - 1
-            if ReadWriteFlag is True:
+            if len(self.list.ReadData[row]) == 0:  # index group read and write
+                if ReadWriteFlag is True:
+                    for _ in self.list.ReadList[row]:
+                        r = _ - 1
+                        self.table.handleReadClicked(r)
+                else:
+                    for _ in self.list.ReadList[row]:
+                        r = _ - 1
+                        self.table.handleWriteClicked(r)
+
+            elif ReadWriteFlag is True:
                 # Read
                 dictRead = {}
                 _bin = ""
@@ -1467,41 +1486,36 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.list.setItem(row+1, 2, QtWidgets.QTableWidgetItem(_bin))
             else:
                 #Write
-                if len(self.list.ReadData[row]) == 0:
-                    for _ in self.list.ReadList[row]:
-                        r = _ - 1
-                        self.table.handleWriteClicked(r)
-                else:
-                    dictWrite = {}
-                    binWrite = self.list.item(row+1, 2).text()
-                    for _ in self.list.ReadList[row]:
-                        r = _ - 1
-                        self.table.handleReadClicked(r)
-                        dictWrite[r] = str(self.table.data.at[r, "BinR"])
+                dictWrite = {}
+                binWrite = self.list.item(row+1, 2).text()
+                for _ in self.list.ReadList[row]:
+                    r = _ - 1
+                    self.table.handleReadClicked(r)
+                    dictWrite[r] = str(self.table.data.at[r, "BinR"])
 
-                    for _ in self.list.ReadData[row]:
-                        if _[0] is not -1:
-                            _index = _[0] - 1
-                            string_list = list(dictWrite[_index][::-1])
-                            if len(_) == 2: # 1 bit
-                                string_list[_[1]] = binWrite[0]
-                                binWrite = binWrite[1:]
-                            elif len(_) == 3:
-                                string_list[_[1]:_[2]] = binWrite[0:_[2]-_[1]]
-                                binWrite = binWrite[_[2]-_[1]:]
-                            elif len(_) == 4:
-                                length = round((_[2]-_[1])/_[3])
-                                string_list[_[1]:_[2]:_[3]] = binWrite[0:length]
-                                binWrite = binWrite[length:]
-                            string_new = "".join(string_list)
-                            dictWrite[_index] = string_new[::-1]
-                        else:
-                            continue
+                for _ in self.list.ReadData[row]:
+                    if _[0] is not -1:
+                        _index = _[0] - 1
+                        string_list = list(dictWrite[_index][::-1])
+                        if len(_) == 2: # 1 bit
+                            string_list[_[1]] = binWrite[0]
+                            binWrite = binWrite[1:]
+                        elif len(_) == 3:
+                            string_list[_[1]:_[2]] = binWrite[0:_[2]-_[1]]
+                            binWrite = binWrite[_[2]-_[1]:]
+                        elif len(_) == 4:
+                            length = round((_[2]-_[1])/_[3])
+                            string_list[_[1]:_[2]:_[3]] = binWrite[0:length]
+                            binWrite = binWrite[length:]
+                        string_new = "".join(string_list)
+                        dictWrite[_index] = string_new[::-1]
+                    else:
+                        continue
 
-                    for _ in self.list.ReadList[row]:
-                        r = _ - 1
-                        self.table.setItem(r, 12, QtWidgets.QTableWidgetItem(dictWrite[r]))
-                        self.table.handleWriteClicked(r)
+                for _ in self.list.ReadList[row]:
+                    r = _ - 1
+                    self.table.setItem(r, 12, QtWidgets.QTableWidgetItem(dictWrite[r]))
+                    self.table.handleWriteClicked(r)
 
     @QtCore.pyqtSlot()
     def spi_switch(self):
