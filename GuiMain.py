@@ -40,12 +40,9 @@ def spi_write(cs,add,data,size):
         ret = ni8452.ni845xSpiWriteRead(cs,[((cmd << 5) + (add >> 3)) % 256, ((add << 5) + (data >> 8)) % 256, data % 256])
         print('Wr:' + str(data) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2] % 256))
 
-def spi_reset(cs, add, size):
-    size = np.int(size)
-    cmd = 8
-    writeline = [((cmd << 5) + (add >> 3)) % 256, (add << 5) % 256]
-    if size > 6:
-        writeline.append(0)
+def spi_reset(cs):
+    cmd = 7
+    writeline = [(cmd << 5) % 256]
     ret = ni8452.ni845xSpiWriteRead(cs, writeline)
 
 
@@ -710,17 +707,6 @@ class LoadTable(QtWidgets.QTableWidget):
                     self.button_plus[_].clicked.disconnect()
                     self.button_plus[_].clicked.connect(lambda *args, rowcount=_: self.handlePlusClicked(rowcount))
 
-    @QtCore.pyqtSlot()
-    def reset_spi(self):
-        for index, row in self.data.iterrows():
-            cs = int(row["SS"])
-            addr = int(row["Addr"])
-            size = int(row["DataSize"])
-            spi_reset(cs,addr,size)
-        for _ in range(len(self.button_read_en)):
-            if SPIConnFlag and self.button_read_en[_] :
-                self.button_read[_].click()
-
     @QtCore.pyqtSlot(int)
     def handleReadClicked(self,r):
         cs =  int(self.data.at[r, "SS"])
@@ -1238,10 +1224,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.vol_button.setFixedSize(QtCore.QSize(120, 30))
         self.vol_button.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
         self.vol_button.clicked.connect(self.voltageModeSwitch)
-        self.reset_button = QtWidgets.QPushButton("Reset")
-        self.reset_button.setFixedSize(QtCore.QSize(100, 30))
-        self.reset_button.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
-        self.reset_button.clicked.connect(self.table.reset_spi)
         self.instant_button = QtWidgets.QPushButton("Show Inst.W")
         self.instant_button.setFixedSize(QtCore.QSize(120, 30))
         self.instant_button.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
@@ -1252,7 +1234,6 @@ class MainWindow(QtWidgets.QMainWindow):
         button_layout1.addWidget(self.delete_button)
         button_layout1.addWidget(self.lock_button)
         button_layout1.addWidget(self.vol_button)
-        button_layout1.addWidget(self.reset_button)
         button_layout1.addWidget(self.instant_button)
         button_layout1.addStretch(1)
         button_box1 = QtWidgets.QGroupBox("Main Table")
@@ -1367,10 +1348,21 @@ class MainWindow(QtWidgets.QMainWindow):
         conhbox.addWidget(self.button_connect)
         conhbox.addWidget(self.led)
 
+        reset_button = QtWidgets.QPushButton("Reset")
+        reset_button.setFixedSize(QtCore.QSize(100, 30))
+        reset_button.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        reset_button.clicked.connect(self.reset_spi)
+        self.resetInput = QtWidgets.QSpinBox()
+        self.resetInput.setFixedWidth(60)
+        self.resetInput.setMinimum(0)
+        self.resetInput.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+
         setupvbox = QtWidgets.QHBoxLayout()
         setupvbox.addLayout(clockhbox)
         setupvbox.addLayout(volhbox)
         setupvbox.addLayout(conhbox)
+        setupvbox.addWidget(reset_button)
+        setupvbox.addWidget(self.resetInput)
         setupvbox.addStretch(1)
         setupvbox.addLayout(filehbox)
         setupbox = QtWidgets.QGroupBox("Setup")
@@ -1655,6 +1647,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     r = _ - 1
                     self.table.setItem(r, 12, QtWidgets.QTableWidgetItem(dictWrite[r]))
                     self.table.handleWriteClicked(r)
+
+    @QtCore.pyqtSlot()
+    def reset_spi(self):
+        cs = int(self.resetInput.value())
+        spi_reset(cs)
 
     @QtCore.pyqtSlot()
     def spi_switch(self):
