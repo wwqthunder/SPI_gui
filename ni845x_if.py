@@ -212,7 +212,7 @@ class ni845x_if:
         print("wsize", wsize)
         print("rsize", rsize)
         print("wbuf", wbuf)
-        print("Return values of ni845xSpiConfigurationSetClockPhase: ", returnValue)
+        print("Return values of ni845xSpiWriteRead: ", returnValue)
         return rbuf
 
     def  ni845xDioSetPortLineDirectionMap (self, DioPort,Map):
