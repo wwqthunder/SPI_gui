@@ -1102,11 +1102,11 @@ class ShortCutList(QtWidgets.QTableWidget):
 
     @QtCore.pyqtSlot(int)
     def handleReadRunClicked(self,r):
-        self.Tx.emit(True,r)
+        self.Tx.emit(True, r)
 
     @QtCore.pyqtSlot(int)
     def handleWriteRunClicked(self,r):
-        self.Tx.emit(False,r)
+        self.Tx.emit(False, r)
 
     def button_update(self):
         for _ in range(len(self.button_read)):

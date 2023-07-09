@@ -48,12 +48,11 @@ def loadxls(path):
     raw = raw.iloc[1:]
     data = pd.DataFrame()
     colsFill = cols_headers.copy()
-    for _ in cols_box:
+    for _ in cols_headers:
         if _ in headers:
             _header = _.replace("Val", "W")
             data[_header] = raw[headers.index(_)]
             colsFill.remove(_header)
-
     for _ in colsFill:
         data[_] = ""
     data = data[cols_headers]

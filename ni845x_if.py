@@ -201,12 +201,13 @@ class ni845x_if:
         void ni845xSpiWriteRead (NiHandle ScriptHandle, uInt32 WriteSize, uInt8 * pWriteData, uInt32 * pReadSize, uInt8 * pReadData);
         :return:None
         """
+        cs = c.c_uint32(cs)
         wsize = c.c_uint32(len(WriteData))
-        wbuf_type = c.c_byte * len(WriteData);
+        wbuf_type = c.c_byte * len(WriteData)
         wbuf = wbuf_type(*WriteData)
         rsize = c.c_uint32(1)
-        rbuf_type = c.c_byte * 4;
-        rbuf = rbuf_type(*[0,0,0,0])
+        rbuf_type = c.c_byte * 4
+        rbuf = rbuf_type(*[0, 0, 0, 0])
         ret = self.i2c.ni845xSpiConfigurationSetChipSelect(self.spi_handle, cs)
         returnValue = self.i2c.ni845xSpiWriteRead(self.device_handle, self.spi_handle, wsize, c.byref(wbuf), c.byref(rsize), c.byref(rbuf))
         print("wsize", wsize)
