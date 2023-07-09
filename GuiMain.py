@@ -121,6 +121,8 @@ class LoadTable(QtWidgets.QTableWidget):
     @QtCore.pyqtSlot(QtCore.QPoint)
     def MenuShow(self, pos):
         it = self.itemAt(pos)
+        if it is None:
+            return
         c = it.column()
         text = it.text()
 
