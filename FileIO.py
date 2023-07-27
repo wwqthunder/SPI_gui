@@ -3,8 +3,10 @@ import pandas as pd
 import numpy as np
 import xml.etree.ElementTree as ET
 #from lxml import etree
-cols_headers = ["SS","Addr","Sel","Name","VolMax","VolMin","DataSize","EnbBits","BinR","DecR","VolR","BinW","DecW","VolW"]
+cols_headers = ["SS", "CAddr", "Addr", "Sel", "Name", "VolMax", "VolMin", "DataSize", "EnbBits", "BinR", "DecR", "VolR", "BinW", "DecW", "VolW"]
 cols_box = ["SS","Addr","Sel","Name","VolMax","VolMin","DataSize","EnbBits","BinVal","DecVal"]
+
+
 def load(path):
     _, extension = os.path.splitext(path)
     if '.xlsm' in extension:
@@ -15,6 +17,7 @@ def load(path):
         data = loadxls(path)
     data["SS"].replace('', np.nan, inplace=True)
     data.dropna(subset=['SS'], inplace=True)
+    data["CAddr"].replace('', 0, inplace=True)
     data["Addr"].replace('', np.nan, inplace=True)
     data.dropna(subset=['Addr'], inplace=True)
     data['SS'] = data['SS'].astype('float')
@@ -34,16 +37,23 @@ def load(path):
     data.reset_index(drop=True, inplace=True)
     return data
 
+
 def loadxlsm(path):
-    data = pd.read_excel(open(path, 'rb'),sheet_name="SPI",usecols="C:M,O:Q",skiprows=4,names=cols_headers,dtype=object,na_filter = False)
+    data = pd.read_excel(open(path, 'rb'),sheet_name="SPI",usecols="C:M,O:Q",skiprows=4,names=cols_headers,dtype=object,na_filter=False)
     return data
+
 
 def loadcsv(path):
-    data = pd.read_csv(path,skiprows=1,names=cols_headers,dtype=object,na_filter = False)
+    data = pd.read_csv(path, usecols=lambda col: col in cols_headers, dtype=object, na_filter=False)
+    for _ in cols_headers:
+        if _ not in data.columns:
+            data[_] = ""
+    data = data[cols_headers]
     return data
 
+
 def loadxls(path):
-    raw = pd.read_excel(open(path, 'rb'), header=None,dtype=object,na_filter = False)
+    raw = pd.read_excel(open(path, 'rb'), header=None, dtype=object, na_filter=False)
     headers = raw.iloc[0].values.tolist()
     raw = raw.iloc[1:]
     data = pd.DataFrame()
@@ -58,10 +68,12 @@ def loadxls(path):
     data = data[cols_headers]
     return data
 
-def df2csv(path,df):
+
+def df2csv(path, df):
     df.to_csv(path,index=False)
 
-def df2xml(path,df):
+
+def df2xml(path, df):
     root = ET.Element('root')  # Root element
 
     for column in df.columns:
@@ -75,13 +87,14 @@ def df2xml(path,df):
     with open(path, 'w') as f:  # Write in file as utf-8
         f.write(xml_data.decode('utf-8'))
 
+
 def loadxml(path):
     xml_data = open(path, 'r').read()  # Read file
     print(xml_data)
     # tree = ET.parse(path)
     # root = tree.getroot()
     # print(root)
-    root = ET.fromstring(xml_data,method="html")
+    root = ET.fromstring(xml_data, method="html")
     #root = ET.XML(xml_data)  # Parse XML
 
     data = []
@@ -99,16 +112,20 @@ def loadxml(path):
             with pd.ExcelWriter(path) as writer:
                 df_list[_].to_excel(writer, sheet_name='Sheet'+str(_+1))
 
+
 if __name__ == '__main__':
     # path = "1020.csv"
     # data = load(path)
     # print(data)
     # df2xml('test.xml',data)
-    path = 'test.xml'
-    loadxml(path)
+    data = pd.read_csv('spi_test_file.csv', usecols=lambda col: col in cols_headers, dtype=object, na_filter=False)
+    for _ in cols_headers:
+        if _ not in data.columns:
+            data[_] = ""
+    data = data[cols_headers]
+    data["CAddr"].replace('', 0, inplace=True)
+    test = data[["Sel", "DataSize", "EnbBits"]]
+    data = data.assign(Sel=1, DataSize=10, EnbBits=10)
+    data[["Sel", "DataSize", "EnbBits"]] = test
+    print(data)
 
-
-    #newRowSeries = pd.Series([0, 0, 0, "", 1.0, 0.0, 0, 0, "", "", "", "", "", "", ""], index=cols_headers)
-    #newRowSeries = data.iloc[-1]
-    #newRowSeries.loc[["Name","BinR","DecR","VolR","BinW","DecW","VolW"]] = ""
-    #for index, row in data.iterrows():

@@ -41,7 +41,6 @@ class ni845x_if:
             self.find_device_handle = c.c_uint32(0)
         number_found = c.c_uint32(0)
 
-#        self.status_code = self.i2c.ni845xFindDevice(c.byref(self.first_device), c.byref(self.find_device_handle), c.byref(number_found))
         self.status_code = self.i2c.ni845xFindDevice(c.byref(self.first_device), c.byref(self.find_device_handle), c.byref(number_found))
         print("returnValue ni845xFindDevice", self.status_code)
         print("First DeviceName:\n", str(self.first_device.value))
@@ -194,29 +193,89 @@ class ni845x_if:
         print("ClockPhase", cp)
         print("Return values of ni845xSpiConfigurationSetClockPhase: ", returnValue)
 
-
-    def  ni845xSpiWriteRead(self, cs, WriteData):
+    def SpiWriteRead(self, cs, WriteData, ReadBytes):
         """
         Calls NI USB-8452 C API function ni845xSpiWriteRead whose prototype is:
         void ni845xSpiWriteRead (NiHandle ScriptHandle, uInt32 WriteSize, uInt8 * pWriteData, uInt32 * pReadSize, uInt8 * pReadData);
         :return:None
         """
         cs = c.c_uint32(cs)
-        wsize = c.c_uint32(len(WriteData))
-        wbuf_type = c.c_byte * len(WriteData)
-        wbuf = wbuf_type(*WriteData)
-        rsize = c.c_uint32(1)
-        rbuf_type = c.c_byte * 4
-        rbuf = rbuf_type(*[0, 0, 0, 0])
-        ret = self.i2c.ni845xSpiConfigurationSetChipSelect(self.spi_handle, cs)
-        returnValue = self.i2c.ni845xSpiWriteRead(self.device_handle, self.spi_handle, wsize, c.byref(wbuf), c.byref(rsize), c.byref(rbuf))
-        print("wsize", wsize)
-        print("rsize", rsize)
-        print("wbuf", wbuf)
-        print("Return values of ni845xSpiWriteRead: ", returnValue)
-        return rbuf
+        write_bytes = len(WriteData)
+        wsize = c.c_uint32(write_bytes)
+        wbuf = (c.c_uint8*write_bytes)(*WriteData)
+        rsize = c.c_uint32(ReadBytes)
+        rbuf = (c.c_uint8*ReadBytes)(*list())
 
-    def  ni845xDioSetPortLineDirectionMap (self, DioPort,Map):
+        ret = self.i2c.ni845xSpiConfigurationSetChipSelect(self.spi_handle, cs)
+        ret = self.i2c.ni845xSpiWriteRead(self.device_handle, self.spi_handle, wsize, c.byref(wbuf), c.byref(rsize), c.byref(rbuf))
+
+        read_data = [rbuf[i] for i in range(ReadBytes)]
+        return read_data
+
+    def spi_read(self, cs, add, size):
+        if size < 6:
+            cmd = 2
+            ret = self.SpiWriteRead(cs, [((cmd << 5) + (add >> 3)) % 256, (add << 5) % 256], 2)
+            print("Addr:" + str(add) + "_Rd:" + str(ret[1] % 32))
+            return ret[1] % 32
+        else:
+            cmd = 1
+            ret = self.SpiWriteRead(cs, [((cmd << 5) + (add >> 3)) % 256, (add << 5) % 256, 0], 3)
+            print("Addr:" + str(add) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2] % 256))
+            return (ret[1] % 32) * 256 + ret[2] % 256
+
+    def spi_write(self, cs, add, data, size):
+        if size < 6:
+            cmd = 6
+            ret = self.SpiWriteRead(cs, [((cmd << 5) + (add >> 3)) % 256, ((add << 5) + data) % 256],2)
+            print('Wr:' + str(data) + "_Rd:" + str(ret[1] % 32))
+        else:
+            cmd = 5
+            ret = self.SpiWriteRead(cs, [((cmd << 5) + (add >> 3)) % 256, ((add << 5) + (data >> 8)) % 256,
+                                                 data % 256], 3)
+            print('Wr:' + str(data) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2] % 256))
+
+    def write_reg(self, cs, caddr, addr, data):
+        """
+        NO OVERFLOW PROTECTION!!!
+        caddr: 6 bits chip address, addr: 9 bits address, data: 11 bits data or list[].
+        addr is designed to start from "0" in HW, but for consistency with conventional okada lab spi protocol,
+        parameter _addr is employed making addr starts from "1".
+        table.csv also must start from "1"
+        """
+        cmd = 2
+        write_data = [caddr, (cmd * 2 ** 4) + int(addr / 256), addr % 256]
+        if type(data) == list:
+            for _ in data:
+                write_data = write_data + [int(_ / 128), (_ * 2) % 256]
+        else:
+            write_data = write_data + [int(data / 128), (data * 2) % 256]
+        # print(write_data)
+        self.SpiWriteRead(cs, write_data, 5)
+
+    def read_reg(self, cs, caddr, addr, read_num=1):
+        """
+        NO OVERFLOW PROTECTION!!!
+        caddr: 6 bits chip address, addr: 9 bits address, read_num: number of addr to read, return: 11 bits list.
+        addr is designed to start from "0" in HW, but for consistency with conventional okada lab spi protocol,
+        parameter _addr is employed making addr starts from "1".
+        table.csv also must start from "1"
+        """
+        cmd = 1
+        write_data = [caddr, (cmd * 2**4)+int(addr/256), addr%256]
+        write_data = write_data + 2*read_num*[0]
+        raw_data = self.SpiWriteRead(cs, write_data, 2*read_num+3)[3:]
+        read_data_list = []
+        for _ in range(read_num):
+            read_data_list.append((raw_data[2*_]%16)*(2**7) + int(raw_data[2*_+1]/2))
+        return read_data_list
+
+    def spi_reset(self, cs):
+        cmd = 7
+        writeline = [(cmd << 5) % 256]
+        ret = self.SpiWriteRead(cs, writeline, 3)
+
+    def  ni845xDioSetPortLineDirectionMap(self, DioPort, Map):
         """
         Calls NI USB-8452 C API function ni845xDioSetPortLineDirectionMap  whose prototype is:
         void ni845xDioSetPortLineDirectionMap  (NiHandle DeviceHandle,Int32 DioPort, Map Map);
@@ -227,7 +286,7 @@ class ni845x_if:
         returnValue = self.i2c.ni845xDioSetPortLineDirectionMap(self.device_handle, dp, mp)
         print("Return values of ni845xSpiConfigurationSetClockPhase: ", returnValue)
 
-    def  ni845xDioSetDriverType (self, DioPort,Type):
+    def  ni845xDioSetDriverType (self, DioPort, Type):
         """
         Calls NI USB-8452 C API function ni845xDioSetDriverType  whose prototype is:
         void ni845xDioSetDriverType  (NiHandle DeviceHandle,Int32 DioPort, Map Map);
