@@ -250,7 +250,7 @@ class ni845x_if:
                 write_data = write_data + [int(_ / 128), (_ * 2) % 256]
         else:
             write_data = write_data + [int(data / 128), (data * 2) % 256]
-        # print(write_data)
+        print(write_data)
         self.SpiWriteRead(cs, write_data, 5)
 
     def read_reg(self, cs, caddr, addr, read_num=1):
@@ -268,7 +268,7 @@ class ni845x_if:
         read_data_list = []
         for _ in range(read_num):
             read_data_list.append((raw_data[2*_]%16)*(2**7) + int(raw_data[2*_+1]/2))
-        return read_data_list
+        return read_data_list[0]
 
     def spi_reset(self, cs):
         cmd = 7
@@ -363,4 +363,14 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    cmd = 2
+    caddr = 1
+    addr = 2
+    data = 512
+    write_data = [caddr, (cmd * 2 ** 4) + int(addr / 256), addr % 256]
+    if type(data) == list:
+        for _ in data:
+            write_data = write_data + [int(_ / 128), (_ * 2) % 256]
+    else:
+        write_data = write_data + [int(data / 128), (data * 2) % 256]
+    print(write_data)

@@ -687,13 +687,14 @@ class LoadTable(QtWidgets.QTableWidget):
 
         if Protocol == "CS":
             res = ni8452.read_reg(cs, caddr, addr)
+            res = res % (2 ** 10)
         else:
             res = ni8452.spi_read(cs, addr, size)
-        if sel == 0:
-            if size is not nBits:
-                res = res % (2 ** nBits)
-        else:
-            res = (res >> (sel - 1)) % (2 ** nBits)
+            if sel == 0:
+                if size is not nBits:
+                    res = res % (2 ** nBits)
+            else:
+                res = (res >> (sel - 1)) % (2 ** nBits)
         self.data.at[r, "DecR"] = res
         _temp = QtWidgets.QTableWidgetItem()
         _temp.setData(QtCore.Qt.DisplayRole, int(res))
