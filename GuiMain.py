@@ -1625,8 +1625,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     def reset_spi(self):
-        cs = int(self.resetInput.value())
-        ni8452.spi_reset(cs)
+        global Protocol
+        if Protocol == "CS":
+            caddr = int(self.resetInput.value())
+            ni8452.spi_reset_new(0, caddr)
+        else:
+            cs = int(self.resetInput.value())
+            print(cs)
+            ni8452.spi_reset(cs)
 
     @QtCore.pyqtSlot()
     def spi_switch(self):

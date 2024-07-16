@@ -275,6 +275,11 @@ class ni845x_if:
         writeline = [(cmd << 5) % 256]
         ret = self.SpiWriteRead(cs, writeline, 3)
 
+    def spi_reset_new(self, cs, caddr):
+        cmd = 7
+        write_data = [caddr,(cmd * 2**4), 0, 0, 0]
+        ret = self.SpiWriteRead(cs, write_data, 5)
+
     def  ni845xDioSetPortLineDirectionMap(self, DioPort, Map):
         """
         Calls NI USB-8452 C API function ni845xDioSetPortLineDirectionMap  whose prototype is:
