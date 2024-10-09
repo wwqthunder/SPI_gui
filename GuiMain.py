@@ -188,8 +188,9 @@ class LoadTable(QtWidgets.QTableWidget):
             color = QtWidgets.QColorDialog.getColor()
             if color.isValid():
                 for _ in self.selectedIndexes():
-                    self.item(_.row(),_.column()).setForeground(color)
+                    self.item(_.row(), _.column()).setForeground(color)
 
+     # Synchronize data-> self.item self.data
     @QtCore.pyqtSlot(int, int)
     def _cellclicked(self, r, c):
         self.blockSignals(True)
@@ -233,10 +234,11 @@ class LoadTable(QtWidgets.QTableWidget):
                     self.blockSignals(False)
                     return
             _pre = self.data.at[r, self.cols_headers[c]]
-            self.data.at[r, self.cols_headers[c]] = text
+            self.data.at[r, self.cols_headers[c]] = text # Data type should be int despite name and bin
             if c < 9:
                 if _pre not in self.data[self.data_headers[c]].values.tolist():
-                    del self.FilterConfig[c][str(_pre)]
+                    if str(_pre) in self.FilterConfig[c]:
+                        del self.FilterConfig[c][str(_pre)]
                 if text not in self.FilterConfig[c]:
                     self.FilterConfig[c][str(text)] = True
             # Bin Dec data sync
@@ -259,8 +261,8 @@ class LoadTable(QtWidgets.QTableWidget):
                 _dec = int(text, 2)
                 self.data.at[r, "DecW"] = _dec
                 self.setTable(r, self.dict_name2col["DecW"], _dec)
-                if str(self.data.at[r,"EnbBits"]).isdigit():
-                    if int(self.data.at[r,"EnbBits"]) is not 0:
+                if str(self.data.at[r, "EnbBits"]).isdigit():
+                    if int(self.data.at[r, "EnbBits"]) is not 0:
                         _format = "0" + str(self.data.at[r, "EnbBits"]) + "b"
                         _bin = format(_dec, _format)
                         self.item(r, 13).setData(QtCore.Qt.EditRole, _bin)
@@ -475,7 +477,7 @@ class LoadTable(QtWidgets.QTableWidget):
             self.setItem(index, 5, _temp)
             _temp = QtWidgets.QTableWidgetItem()
             _temp.setData(QtCore.Qt.EditRole, float(row["VolMin"]))
-            self.setItem(index, 6, QtWidgets.QTableWidgetItem(str(row["VolMin"])))
+            self.setItem(index, 6, _temp)
 
             self.setTable(index, 7, int(row["DataSize"]))
             self.setTable(index, 8, int(row["EnbBits"]))
