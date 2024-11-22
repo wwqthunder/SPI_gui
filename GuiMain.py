@@ -393,7 +393,7 @@ class LoadTable(QtWidgets.QTableWidget):
             else:
                 pass
             # Status Update
-            if self.cols_headers[c] in ["SS", "CAddr", "Addr", "Pos", "RegSize", "Size", "BinW", "DecW", "VolW"]:
+            if self.cols_headers[c] in ["Term", "SS", "CAddr", "Addr", "Pos", "RegSize", "Size", "BinW", "DecW", "VolW"]:
                 self.button_enable_set(r)
             self.onLoading = False
         self.blockSignals(False)
@@ -430,6 +430,18 @@ class LoadTable(QtWidgets.QTableWidget):
 
     def button_enable_set(self, r):
         global Protocol
+        raspi_flag = self.isColumnHidden(self.col_dict["Term"])
+        term = ""
+        if not raspi_flag:
+            term = self.data.at[r, "Term"]
+            term = str(term).replace(" ", "")
+        if len(term) > 0:
+            if term in self.client.connections:
+                ConnFlag = True
+            else:
+                ConnFlag = False
+        else:
+            ConnFlag = SPIConnFlag
         if Protocol == "CA":
             cols_key = ["SS", "CAddr", "Addr"]
         else:
@@ -439,8 +451,8 @@ class LoadTable(QtWidgets.QTableWidget):
         _enWrite = _enRead and str(self.data.at[r, "DecW"]).isdigit()
         self.button_read_en[r] = _enRead
         self.button_write_en[r] = _enWrite
-        self.button_read[r].setEnabled(SPIConnFlag and _enRead)
-        self.button_write[r].setEnabled(SPIConnFlag and _enWrite)
+        self.button_read[r].setEnabled(ConnFlag and _enRead)
+        self.button_write[r].setEnabled(ConnFlag and _enWrite)
 
     def menuClose(self):
         self.keywords[self.col] = []
@@ -763,12 +775,11 @@ class LoadTable(QtWidgets.QTableWidget):
         if not raspi_flag:
             term = self.data.at[r, "Term"]
             term = str(term).replace(" ", "")
-
         cs = int(self.data.at[r, "SS"])
-        caddr = int(self.data.at[r, "CAddr"])
         addr = int(self.data.at[r, "Addr"])
 
         if Protocol == "CA":
+            caddr = int(self.data.at[r, "CAddr"])
             nBits = 10
             if len(term) > 0:
                 res = self.client.read_reg(term, cs, caddr, addr)
@@ -819,11 +830,11 @@ class LoadTable(QtWidgets.QTableWidget):
             term = str(term).replace(" ", "")
 
         cs = int(self.data.at[r, "SS"])
-        caddr = int(self.data.at[r, "CAddr"])
         data = int(self.data.at[r, "DecW"])
         addr = int(self.data.at[r, "Addr"])
 
         if Protocol == "CA":
+            caddr = int(self.data.at[r, "CAddr"])
             if len(term) > 0:
                 self.client.write_reg(term, cs, caddr, addr, data)
             else:
@@ -1033,8 +1044,8 @@ class ShortCutList(QtWidgets.QTableWidget):
                     _temp.setForeground(QtGui.QColor(255, 0, 0))
                     self.setItem(r, c, _temp)
                 self.item(r, c).setTextAlignment(QtCore.Qt.AlignCenter)
-                self.button_read[r].setEnabled(SPIConnFlag and self.button_read_en[r])
-                self.button_write[r].setEnabled(SPIConnFlag and self.button_write_en[r])
+                self.button_read[r].setEnabled(self.button_read_en[r])
+                self.button_write[r].setEnabled(self.button_write_en[r])
 
             elif c is 2:
                 if self.ReadData[row] is None:
@@ -1125,8 +1136,8 @@ class ShortCutList(QtWidgets.QTableWidget):
 
             button_read = QtWidgets.QPushButton('Read')
             button_write = QtWidgets.QPushButton('Write')
-            button_read.setEnabled(SPIConnFlag)
-            button_write.setEnabled(SPIConnFlag)
+            button_read.setEnabled(True)
+            button_write.setEnabled(True)
             button_read.clicked.connect(lambda *args, rowcount=_index+1: self.handleReadRunClicked(rowcount))
             button_write.clicked.connect(lambda *args, rowcount=_index+1: self.handleWriteRunClicked(rowcount))
             self.button_read.append(button_read)
@@ -1203,9 +1214,9 @@ class ShortCutList(QtWidgets.QTableWidget):
 
     def button_update(self):
         for _ in range(len(self.button_read)):
-            self.button_read[_].setEnabled(SPIConnFlag and self.button_read_en[_])
+            self.button_read[_].setEnabled(self.button_read_en[_])
         for _ in range(len(self.button_write)):
-            self.button_write[_].setEnabled(SPIConnFlag and self.button_write_en[_])
+            self.button_write[_].setEnabled(self.button_write_en[_])
 
 
 class VarTable(QtWidgets.QTableWidget):
@@ -1723,11 +1734,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if row is 0:
             if ReadWriteFlag is True:
                 for _ in range(len(self.table.button_read_en)):
-                    if self.table.button_read_en[_]:
+                    if self.table.button_read[_].isEnabled():
                         self.table.handleReadClicked(_)
             else:
                 for _ in range(len(self.table.button_write_en)):
-                    if self.table.button_write_en[_]:
+                    if self.table.button_write[_].isEnabled():
                         self.table.handleWriteClicked(_)
         else:
             row = row - 1
@@ -1735,18 +1746,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 if ReadWriteFlag is True:
                     for _ in self.list.ReadList[row]:
                         r = _ - 1
-                        if self.table.button_read_en[r]:
+                        if self.table.button_read[r].isEnabled():
                             self.table.handleReadClicked(r)
                 else:
                     for _ in self.list.ReadList[row]:
                         r = _ - 1
-                        if self.table.button_write_en[r]:
+                        if self.table.button_write[r].isEnabled():
                             self.table.handleWriteClicked(r)
 
             elif ReadWriteFlag is True:
                 # Read
                 dictRead = {}
                 _bin = ""
+                for _ in self.list.ReadList[row]:
+                    r = _ - 1
+                    if not self.table.button_read[r].isEnabled():
+                        return
                 for _ in self.list.ReadList[row]:
                     r = _ - 1
                     self.table.handleReadClicked(r)
@@ -1772,6 +1787,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Write
                 dictWrite = {}
                 binWrite = self.list.item(row+1, 2).text()
+                for _ in self.list.ReadList[row]:
+                    r = _ - 1
+                    if not self.table.button_write[r].isEnabled():
+                        return
                 for _ in self.list.ReadList[row]:
                     r = _ - 1
                     self.table.handleReadClicked(r)
@@ -1804,7 +1823,6 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot()
     def reset_spi(self):
         global Protocol
-
         if Protocol == "CA":
             caddr = int(self.resetInput.value())
             ni8452.spi_reset_new(0, caddr)
@@ -1861,9 +1879,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.raspi_action.isChecked():
             self.raspibox.show()
             self.table.setColumnHidden(self.table.col_dict["Term"], False)
+            self.table.button_update()
+            self.list.button_update()
         else:
             self.raspibox.hide()
             self.table.setColumnHidden(self.table.col_dict["Term"], True)
+            self.table.button_update()
+            self.list.button_update()
 
     @QtCore.pyqtSlot()
     def tcp_discover(self):
@@ -1904,6 +1926,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.raspi_layout[name].deleteLater()
             self.raspi_layout[name] = None
             del self.raspi_layout[name]
+        self.table.button_update()
+        self.list.button_update()
 
     @QtCore.pyqtSlot(str)
     def raspi_delete(self, name):
