@@ -3,9 +3,11 @@ import pandas as pd
 import numpy as np
 import xml.etree.ElementTree as ET
 #from lxml import etree
+xlsm_headers = ["SS", "Addr", "Pos", "Name", "VolMax", "VolMin", "RegSize", "Size", "BinR", "DecR", "VolR", "BinW", "DecW", "VolW"]
 cols_headers = ["SS", "CAddr", "Addr", "Sel", "Name", "VolMax", "VolMin", "DataSize", "EnbBits", "BinR", "DecR", "VolR", "BinW", "DecW", "VolW"]
 cols_box = ["SS","Addr","Sel","Name","VolMax","VolMin","DataSize","EnbBits","BinVal","DecVal"]
-
+data_headers = ["Term", "SS", "CAddr", "Addr", "Pos", "Name", "VolMax", "VolMin", "RegSize", "Size",
+                             "BinR", "DecR", "VolR", "BinW", "DecW", "VolW", "Unit"]
 
 def load(path):
     _, extension = os.path.splitext(path)
@@ -15,65 +17,86 @@ def load(path):
         data = loadcsv(path)
     else:
         data = loadxls(path)
-    data["SS"].replace('', np.nan, inplace=True)
-    data.dropna(subset=['SS'], inplace=True)
-    data["CAddr"].replace('', 0, inplace=True)
-    data["Sel"].replace('', 0, inplace=True)
-    data["DataSize"].replace('', 0, inplace=True)
-    data["EnbBits"].replace('', 0, inplace=True)
-    data["Addr"].replace('', np.nan, inplace=True)
-    data.dropna(subset=['Addr'], inplace=True)
-    data['SS'] = data['SS'].astype('float')
-    data['Addr'] = data['Addr'].astype('float')
-    data['Sel'] = data['Sel'].astype('float')
-    data['DataSize'] = data['DataSize'].astype('float')
-    data['EnbBits'] = data['EnbBits'].astype('float')
-    data['SS'] = data['SS'].astype('int')
-    data['Addr'] = data['Addr'].astype('int')
-    data['Sel'] = data['Sel'].astype('int')
-    data['DataSize'] = data['DataSize'].astype('int')
-    data['EnbBits'] = data['EnbBits'].astype('int')
-    # NEED a better way to transfer (string)"0.0" to (int)0.
-
-    #data = data.dropna(axis=0, subset=['SS'])
-    #data = data.dropna(axis=0, subset=['Addr'])
+    for col in ["BinR", "BinW"]:
+        data[col] = data[col].apply(lambda x: str(x) if is_bin(x) else "")
+    for col in ["SS", "CAddr", "Addr", "Pos", "RegSize", "Size", "DecR", "DecW", "Unit"]:
+        data[col] = data[col].apply(lambda x: str(x) if is_int(x) else "")
+    for col in ["VolMax", "VolMin", "VolR", "VolW"]:
+        data[col] = data[col].apply(lambda x: str(x) if is_float(x) else "")
     data.reset_index(drop=True, inplace=True)
     return data
 
 
 def loadxlsm(path):
-    data = pd.read_excel(open(path, 'rb'),sheet_name="SPI",usecols="C:M,O:Q",skiprows=4,names=cols_headers,dtype=object,na_filter=False)
+    raw = pd.read_excel(open(path, 'rb'), sheet_name="SPI", usecols="C:M,O:Q", skiprows=4, names=xlsm_headers, dtype=object, na_filter=False)
+    data = pd.DataFrame(data=[[""] * len(data_headers) for _ in range(raw.shape[0])], index=range(raw.shape[0]), columns=data_headers)
+    for _ in data_headers:
+        if _ in raw.columns:
+            data[_] = raw[_]
+        else:
+            continue
     return data
 
 
 def loadcsv(path):
-    data = pd.read_csv(path, usecols=lambda col: col in cols_headers, dtype=object, na_filter=False)
-    for _ in cols_headers:
-        if _ not in data.columns:
-            data[_] = ""
-    data = data[cols_headers]
+    raw = pd.read_csv(path, dtype=object, na_filter=False)
+    data = pd.DataFrame(data=[[""] * len(data_headers) for _ in range(raw.shape[0])], index=range(raw.shape[0]), columns=data_headers)
+    for _ in data_headers:
+        if _ in raw.columns:
+            data[_] = raw[_]
+        elif _ == "Pos" and "Sel" in raw.columns:
+            data[_] = raw["Sel"]
+        elif _ == "RegSize" and "DataSize" in raw.columns:
+            data[_] = raw["DataSize"]
+        elif _ == "Size" and "EnbBits" in raw.columns:
+            data[_] = raw["EnbBits"]
+        else:
+            continue
     return data
 
 
 def loadxls(path):
-    raw = pd.read_excel(open(path, 'rb'), header=None, dtype=object, na_filter=False)
-    headers = raw.iloc[0].values.tolist()
-    raw = raw.iloc[1:]
-    data = pd.DataFrame()
-    colsFill = cols_headers.copy()
-    for _ in cols_headers:
-        if _ in headers:
-            _header = _.replace("Val", "W")
-            data[_header] = raw[headers.index(_)]
-            colsFill.remove(_header)
-    for _ in colsFill:
-        data[_] = ""
-    data = data[cols_headers]
+    raw = pd.read_excel(open(path, 'rb'), dtype=object, na_filter=False)
+    data = pd.DataFrame(data=[[""] * len(data_headers) for _ in range(raw.shape[0])], index=range(raw.shape[0]),
+                        columns=data_headers)
+    for _ in data_headers:
+        if _ in raw.columns:
+            data[_] = raw[_]
+        elif _ == "Pos" and "Sel" in raw.columns:
+            data[_] = raw["Sel"]
+        elif _ == "RegSize" and "DataSize" in raw.columns:
+            data[_] = raw["DataSize"]
+        elif _ == "Size" and "EnbBits" in raw.columns:
+            data[_] = raw["EnbBits"]
+        else:
+            continue
     return data
 
 
+def is_bin(value):
+    if str(value):
+        return set(str(value)).issubset({'0', '1'})
+    else:
+        return False
+
+
+def is_int(value):
+    try:
+        int(float(value))
+        return True
+    except ValueError:
+        return False
+
+def is_float(value):
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
+
+
 def df2csv(path, df):
-    df.to_csv(path,index=False)
+    df.to_csv(path, index=False)
 
 
 def df2xml(path, df):
@@ -121,14 +144,17 @@ if __name__ == '__main__':
     # data = load(path)
     # print(data)
     # df2xml('test.xml',data)
-    data = pd.read_csv('spi_test_file.csv', usecols=lambda col: col in cols_headers, dtype=object, na_filter=False)
-    for _ in cols_headers:
-        if _ not in data.columns:
-            data[_] = ""
-    data = data[cols_headers]
-    data["CAddr"].replace('', 0, inplace=True)
-    test = data[["Sel", "DataSize", "EnbBits"]]
-    data = data.assign(Sel=1, DataSize=10, EnbBits=10)
-    data[["Sel", "DataSize", "EnbBits"]] = test
+    #data = pd.read_csv('spi_test_file.csv', usecols=lambda col: col in cols_headers, dtype=object, na_filter=False)
+    #for _ in cols_headers:
+    #    if _ not in data.columns:
+    #        data[_] = ""
+    #data = data[cols_headers]
+    #data["CAddr"].replace('', 0, inplace=True)
+    #test = data[["Sel", "DataSize", "EnbBits"]]
+    #data = data.assign(Sel=1, DataSize=10, EnbBits=10)
+    #data[["Sel", "DataSize", "EnbBits"]] = test
+    #print(data)
+    cols = len(data_headers)
+    data = pd.DataFrame(data=[[""] * cols for _ in range(100)], index=range(100),
+                        columns=data_headers)
     print(data)
-

@@ -227,7 +227,7 @@ class ni845x_if:
     def spi_write(self, cs, add, data, size):
         if size < 6:
             cmd = 6
-            ret = self.SpiWriteRead(cs, [((cmd << 5) + (add >> 3)) % 256, ((add << 5) + data) % 256],2)
+            ret = self.SpiWriteRead(cs, [((cmd << 5) + (add >> 3)) % 256, ((add << 5) + data) % 256], 2)
             print('Wr:' + str(data) + "_Rd:" + str(ret[1] % 32))
         else:
             cmd = 5
@@ -277,7 +277,7 @@ class ni845x_if:
 
     def spi_reset_new(self, cs, caddr):
         cmd = 7
-        write_data = [caddr,(cmd * 2**4), 0, 0, 0]
+        write_data = [caddr, (cmd * 2**4), 0, 0, 0]
         ret = self.SpiWriteRead(cs, write_data, 5)
 
     def  ni845xDioSetPortLineDirectionMap(self, DioPort, Map):

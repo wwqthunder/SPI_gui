@@ -9,6 +9,7 @@ import numpy as np
 import pickle as pkl
 from Picker import *
 from utilis import *
+from TCPclient import *
 from lut import LUT, LUTShow, ArrayShow
 # NI SPI interface
 
@@ -23,8 +24,8 @@ class LoadTable(QtWidgets.QTableWidget):
     Table2ListSync = QtCore.pyqtSignal(int)
 
     def __init__(self, parent=None):
-        super(LoadTable, self).__init__(0, 20, parent) # Remember to change when length changed
-        self.data = pd.DataFrame()
+        super(LoadTable, self).__init__(0, 21, parent) # Remember to change when length changed
+        self.client = TCPClient()
         self.onLoading = False
         # Store button handle
         self.button_read = []
@@ -33,31 +34,27 @@ class LoadTable(QtWidgets.QTableWidget):
         self.button_write_en = []
         self.button_minus = []
         self.button_plus = []
-        self.cols_headers = ["SS", "CAddr", "Addr", "Sel", "Name", "VolMax", "VolMin", "DataSize", "EnbBits", "BinR",
-                             "DecR", "VolR", "Read", "BinW", "DecW", "VolW", "Write", "-", "+", "Unit"]
-        self.data_headers = ["SS", "CAddr", "Addr", "Sel", "Name", "VolMax", "VolMin", "DataSize", "EnbBits", "BinR",
-                             "DecR", "VolR", "BinW", "DecW", "VolW", "Unit"]
+        self.cols_headers = ["Term", "SS", "CAddr", "Addr", "Pos", "Name", "VolMax", "VolMin", "RegSize", "Size",
+                             "BinR", "DecR", "VolR", "Read", "BinW", "DecW", "VolW", "Write", "-", "+", "Unit"]
+        self.data_headers = ["Term", "SS", "CAddr", "Addr", "Pos", "Name", "VolMax", "VolMin", "RegSize", "Size",
+                             "BinR", "DecR", "VolR", "BinW", "DecW", "VolW", "Unit"]
         self.col_dict = dict(zip(self.cols_headers, range(len(self.cols_headers))))
         '''
          0       1        2      3       4       5         6          7           8        9       10      11      12      13      14      15      16    17   18     19
-        "SS", "CAddr", "Addr", "Sel", "Name", "VolMax", "VolMin", "DataSize", "EnbBits", "BinR", "DecR", "VolR", "Read", "BinW", "DecW", "VolW", "Write", "-", "+", "unit"
+        "SS", "CAddr", "Addr", "Pos", "Name", "VolMax", "VolMin", "RegSize", "Size", "BinR", "DecR", "VolR", "Read", "BinW", "DecW", "VolW", "Write", "-", "+", "unit"
         '''
         self.forbidden_cols = [self.col_dict["BinR"], self.col_dict["DecR"], self.col_dict["VolR"],
                                self.col_dict["Read"], self.col_dict["Write"], self.col_dict["-"], self.col_dict["+"]]
-        self.Filter_cols = [self.data_headers.index("SS"), self.data_headers.index("CAddr"),
-            self.data_headers.index("Addr"), self.data_headers.index("Sel"), self.data_headers.index("Name"),
-            self.data_headers.index("VolMax"), self.data_headers.index("VolMin"), self.data_headers.index("DataSize"),
-            self.data_headers.index("EnbBits")]
-        self.cols_int = [self.col_dict["SS"], self.col_dict["CAddr"], self.col_dict["Addr"], self.col_dict["Sel"],
-                         self.col_dict["DataSize"], self.col_dict["EnbBits"], self.col_dict["DecW"], self.col_dict["Unit"]]
+        self.Filter_cols = ["Term", "SS", "CAddr", "Addr", "Pos", "Name", "VolMax", "VolMin", "RegSize", "Size"]
+        self.cols_int = [self.col_dict["SS"], self.col_dict["CAddr"], self.col_dict["Addr"], self.col_dict["Pos"],
+                         self.col_dict["RegSize"], self.col_dict["Size"], self.col_dict["DecW"], self.col_dict["Unit"]]
 
         self.data = pd.DataFrame(columns=self.data_headers)
-        self.mode_backup = pd.DataFrame(columns=self.data_headers)
 
         self.setHorizontalHeaderLabels(self.cols_headers)
         self.horizontalHeader().setHighlightSections(True)
         self.horizontalHeader().sectionClicked.connect(self.columnfilterclicked)
-        self.FilterConfig = [dict([(str(_), True) for _ in self.data.iloc[:, idx].drop_duplicates().tolist()]) for idx
+        self.FilterConfig = [dict([(str(_), True) for _ in self.data.loc[:, idx].drop_duplicates().tolist()]) for idx
                              in self.Filter_cols]
         self.keywords = dict([(i, []) for i in self.Filter_cols])
         self.checkBoxs = []
@@ -72,6 +69,7 @@ class LoadTable(QtWidgets.QTableWidget):
                                               "background-color:white;"
                                               "padding:4px;""}")
         # self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        self.setColumnHidden(self.col_dict["Term"], True)
         self.setColumnHidden(self.col_dict["CAddr"], True)
         self.setColumnHidden(self.col_dict["VolMax"], True)
         self.setColumnHidden(self.col_dict["VolMin"], True)
@@ -81,27 +79,29 @@ class LoadTable(QtWidgets.QTableWidget):
         self.setColumnHidden(self.col_dict["+"], True)
         self.setColumnHidden(self.col_dict["Unit"], True)
         # self.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self.setColumnWidth(self.col_dict["Term"], 40)
         self.setColumnWidth(self.col_dict["SS"], 20)
         self.setColumnWidth(self.col_dict["CAddr"], 50)
         self.setColumnWidth(self.col_dict["Addr"], 50)
-        self.setColumnWidth(self.col_dict["Sel"], 20)
+        self.setColumnWidth(self.col_dict["Pos"], 20)
         self.setColumnWidth(self.col_dict["Name"], 250)
-        self.setColumnWidth(self.col_dict["VolMax"], 20)
-        self.setColumnWidth(self.col_dict["VolMin"], 20)
-        self.setColumnWidth(self.col_dict["DataSize"], 20)
-        self.setColumnWidth(self.col_dict["EnbBits"], 20)
-        self.setColumnWidth(self.col_dict["BinR"], 100)
+        self.setColumnWidth(self.col_dict["VolMax"], 40)
+        self.setColumnWidth(self.col_dict["VolMin"], 40)
+        self.setColumnWidth(self.col_dict["RegSize"], 30)
+        self.setColumnWidth(self.col_dict["Size"], 20)
+        self.setColumnWidth(self.col_dict["BinR"], 90)
         self.setColumnWidth(self.col_dict["DecR"], 60)
-        self.setColumnWidth(self.col_dict["VolR"], 80)
+        self.setColumnWidth(self.col_dict["VolR"], 70)
         self.setColumnWidth(self.col_dict["Read"], 60)
-        self.setColumnWidth(self.col_dict["BinW"], 100)
+        self.setColumnWidth(self.col_dict["BinW"], 90)
         self.setColumnWidth(self.col_dict["DecW"], 60)
-        self.setColumnWidth(self.col_dict["VolW"], 80)
+        self.setColumnWidth(self.col_dict["VolW"], 70)
         self.setColumnWidth(self.col_dict["Write"], 60)
         self.setColumnWidth(self.col_dict["-"], 40)
         self.setColumnWidth(self.col_dict["+"], 40)
         self.setColumnWidth(self.col_dict["Unit"], 40)
         self.cellChanged.connect(self._cellclicked)
+        #self.setSelectionMode(QtWidgets.QTableWidget.ContiguousSelection)
         self.itemSelectionChanged.connect(self._itemclicked)
         self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.setInputMethodHints(QtCore.Qt.ImhHiddenText)
@@ -117,6 +117,19 @@ class LoadTable(QtWidgets.QTableWidget):
         text = it.text()
 
         menu = QtWidgets.QMenu()
+        copy_action = QtWidgets.QAction("Copy", self)
+        copy_action.setShortcut(QtGui.QKeySequence.Copy)
+        copy_action.triggered.connect(self.copy)
+        menu.addAction(copy_action)
+        paste_action = QtWidgets.QAction("Paste", self)
+        paste_action.setShortcut(QtGui.QKeySequence.Paste)
+        paste_action.triggered.connect(self.paste)
+        menu.addAction(paste_action)
+        fill_action = QtWidgets.QAction("Fill Down", self)
+        fill_action.setShortcut("Ctrl+D")
+        fill_action.triggered.connect(self.fill_down)
+        menu.addAction(fill_action)
+        menu.addSeparator()
         add_action = menu.addAction("Add Row")
         delete_action = menu.addAction("Delete Row")
         edit_action = menu.addAction("Edit")
@@ -131,14 +144,19 @@ class LoadTable(QtWidgets.QTableWidget):
             self.addrow()
         elif action == edit_action:
             if c in self.cols_int:
-                if text.isdigit() is True:
+                global Protocol
+                if Protocol == "CA":
+                    _size = 10
+                else:
+                    _size = self.data.at[r, "Size"]
+                if text.isdigit():
                     _init = int(text)
                 else:
                     _init = 0
                 if c in [self.col_dict["CAddr"], self.col_dict["Addr"]]:
                     _max = 255
-                elif c == self.col_dict["DecW"] and str(self.data.at[r, "EnbBits"]).isdigit():
-                    _max = 2**int(self.data.at[r, "EnbBits"]) - 1
+                elif c == self.col_dict["DecW"] and str(_size).isdigit():
+                    _max = 2**int(_size) - 1
                 else:
                     _max = 65535
                 res, okPressed = QtWidgets.QInputDialog.getInt(self, self.cols_headers[c], "Set "+self.cols_headers[c]+":", _init, 0, _max, 1)
@@ -191,6 +209,110 @@ class LoadTable(QtWidgets.QTableWidget):
                 for _ in self.selectedIndexes():
                     self.item(_.row(), _.column()).setForeground(color)
 
+    def copy(self):
+        selected_ranges = self.selectedRanges()
+        if not selected_ranges:
+            return
+
+        selected_text = ""
+        for r in range(selected_ranges[0].topRow(), selected_ranges[0].bottomRow() + 1):
+            row_data = []
+            for c in range(selected_ranges[0].leftColumn(), selected_ranges[0].rightColumn() + 1):
+                if self.isColumnHidden(c) or self.cols_headers[c].endswith("R") or self.cols_headers[c] in ["Read", "Write", "-", "+"]:
+                    continue
+                item = self.item(r, c)
+                row_data.append(item.text() if item else "")
+            selected_text += "\t".join(row_data) + "\n"
+        QtWidgets.QApplication.clipboard().setText(selected_text.strip())
+
+    def paste(self):
+        clipboard = QtWidgets.QApplication.clipboard().text()
+        if not clipboard:
+            return
+        selected_ranges = self.selectedRanges()
+        if not selected_ranges:
+            return
+        start_row = selected_ranges[0].topRow()
+        start_col = selected_ranges[0].leftColumn()
+        rows = clipboard.split("\n")
+        for r_offset, row_data in enumerate(rows):
+            cells = row_data.split("\t")
+            c_offset = 0
+            _row = start_row + r_offset
+            while cells:
+                _col = start_col + c_offset
+                if _row < self.rowCount() and _col < self.columnCount():
+                    if self.isColumnHidden(_col) or self.cols_headers[_col].endswith("R") or self.cols_headers[_col] in ["Read", "Write", "-", "+"]:
+                        c_offset += 1
+                        continue
+                    else:
+                        self.setItem(_row, _col, QtWidgets.QTableWidgetItem(cells[0]))
+                        cells.pop(0)
+                        c_offset += 1
+                else:
+                    break
+
+    def fill_down(self):
+        idx = self.selectedIndexes()
+        selected_rows = sorted(set(_.row() for _ in idx))
+        selected_columns = sorted(set(_.column() for _ in idx))
+        if len(selected_columns) > 1 or len(selected_rows) < 1:
+            return
+        _col = selected_columns[0]
+        _base = self.data.at[selected_rows[-1], self.cols_headers[_col]]
+        pointer = selected_rows[-1] + 1
+        _step = 0
+        _flag = ""
+        if self.cols_headers[_col] in ["Read", "Write", "-", "+"] or pointer > self.rowCount():
+            return
+        elif _col in self.cols_int and str(_base).isdigit():
+            _base = int(_base)
+            if len(selected_rows) > 1:
+                _pre = self.data.at[selected_rows[-2], self.cols_headers[_col]]
+                if str(_pre).isdigit():
+                    _step = _base - int(_pre)
+        elif self.cols_headers[_col].startswith("Vol"):
+            try:
+                _base = float(_base)
+                _flag = "F"
+            except Exception as e:
+                return
+            if len(selected_rows) > 1:
+                _pre = self.data.at[selected_rows[-2], self.cols_headers[_col]]
+                try:
+                    _step = _base - float(_pre)
+                except Exception as e:
+                    _step = 0
+        else:
+            _dup = False if len(str(self.data.at[pointer, self.cols_headers[_col]]).replace(" ", "")) > 0 else True
+            while pointer < self.rowCount():
+                dup = False if len(str(self.data.at[pointer, self.cols_headers[_col]]).replace(" ", "")) > 0 else True
+                if dup == _dup:
+                    self.setTable(pointer, _col, _base)
+                    pointer += 1
+                else:
+                    return
+            return
+        _dup = False if len(str(self.data.at[pointer, self.cols_headers[_col]]).replace(" ", "")) > 0 else True
+        while pointer < self.rowCount():
+            dup = False if len(str(self.data.at[pointer, self.cols_headers[_col]]).replace(" ", "")) > 0 else True
+            if dup == _dup:
+                _base += _step
+                self.setTable(pointer, _col, _base, _flag)
+                pointer += 1
+            else:
+                return
+
+    def keyPressEvent(self, event):
+        if event.matches(QtGui.QKeySequence.Copy):
+            self.copy()
+        elif event.matches(QtGui.QKeySequence.Paste):
+            self.paste()
+        elif event.key() == QtCore.Qt.Key_D and event.modifiers() & QtCore.Qt.ControlModifier:
+            self.fill_down()
+        else:
+            super().keyPressEvent(event)
+
      # Synchronize data-> self.item self.data
     @QtCore.pyqtSlot(int, int)
     def _cellclicked(self, r, c):
@@ -201,7 +323,7 @@ class LoadTable(QtWidgets.QTableWidget):
             print(str(r) + ","+str(c))
             text = self.item(r, c).text().replace(" ", "")
             _pre = self.data.at[r, self.cols_headers[c]]
-            if c == self.col_dict["DecW"]:
+            if c in self.cols_int:
                 if text.isdigit():
                     self.setTable(r, c, int(text))
                 else:
@@ -224,68 +346,55 @@ class LoadTable(QtWidgets.QTableWidget):
             elif c == self.col_dict["VolW"]:
                 try:
                     float_data = float(text)
-                    self.setTable(r, c, str(float_data))
+                    self.setTable(r, c, str(float_data), "F")
                 except Exception as e:
                     self.item(r, c).setData(QtCore.Qt.EditRole, _pre)
                     self.onLoading = False
                     self.blockSignals(False)
                     return
             self.data.at[r, self.cols_headers[c]] = text # Data type should be int despite name and bin
-            if c in self.cols_int:  # cols_int c < 9
+            if self.cols_headers[c] in self.Filter_cols:  # cols_int c < 9
                 if _pre not in self.data[self.data_headers[c]].values.tolist():
                     if str(_pre) in self.FilterConfig[c]:
                         del self.FilterConfig[c][str(_pre)]
                 if text not in self.FilterConfig[c]:
                     self.FilterConfig[c][str(text)] = True
             # Bin Dec data sync
-            if c == self.col_dict["DecW"] and str(self.data.at[r, "EnbBits"]).isdigit():
-                if int(self.data.at[r, "EnbBits"]) is not 0:
+            global Protocol
+            if Protocol == "CA":
+                _size = 10
+            else:
+                _size = self.data.at[r, "Size"]
+            if c == self.col_dict["DecW"] and str(_size).isdigit():
+                if int(_size) is not 0:
                     _dec = int(text)
-                    _format = "0" + str(self.data.at[r, "EnbBits"]) + "b"
-                    _bin = format(_dec, _format)
-                    self.data.at[r, "BinW"] = _bin
-                    self.setItem(r, self.col_dict["BinW"], QtWidgets.QTableWidgetItem(_bin))
-                    self.item(r, self.col_dict["BinW"]).setTextAlignment(QtCore.Qt.AlignCenter)
-                    _vol = self.dec2voltage(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], _dec, self.data.at[r, "EnbBits"])
+                    self.setbin(r, _dec, _size)
+                    _vol = self.dec2voltage(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], _dec, _size)
                     if _vol is not None:
                         self.data.at[r, "VolW"] = _vol
-                        self.setTable(r, self.col_dict["VolW"], _vol)
+                        self.setTable(r, self.col_dict["VolW"], _vol, "F")
             elif c == self.col_dict["BinW"]:
                 _dec = int(text, 2)
                 self.data.at[r, "DecW"] = _dec
                 self.setTable(r, self.col_dict["DecW"], _dec)
-                if str(self.data.at[r, "EnbBits"]).isdigit():
-                    if int(self.data.at[r, "EnbBits"]) is not 0:
-                        _format = "0" + str(self.data.at[r, "EnbBits"]) + "b"
-                        _bin = format(_dec, _format)
-                        self.data.at[r, "BinW"] = _bin
-                        self.item(r, c).setData(QtCore.Qt.EditRole, _bin)
-                _vol = self.dec2voltage(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], _dec, self.data.at[r, "EnbBits"])
+                if str(_size).isdigit():
+                    if int(_size) is not 0:
+                        self.setbin(r, _dec, _size)
+                _vol = self.dec2voltage(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], _dec, _size)
                 if _vol is not None:
                     self.data.at[r, "VolW"] = _vol
-                    self.setTable(r, self.col_dict["VolW"], _vol)
+                    self.setTable(r, self.col_dict["VolW"], _vol, "F")
             elif c == self.col_dict["VolW"]:
-                _dec = self.voltage2dec(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], text, self.data.at[r, "EnbBits"])
+                _dec = self.voltage2dec(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], text, _size)
                 if _dec is not None:
                     self.data.at[r, "DecW"] = _dec
                     self.setTable(r, self.col_dict["DecW"], _dec)
-                    _format = "0" + str(self.data.at[r, "EnbBits"]) + "b"
-                    _bin = format(_dec, _format)
-                    self.data.at[r, "BinW"] = _bin
-                    self.setItem(r, self.col_dict["BinW"], QtWidgets.QTableWidgetItem(_bin))
-                    self.item(r, self.col_dict["BinW"]).setTextAlignment(QtCore.Qt.AlignCenter)
+                    self.setbin(r, _dec, _size)
             else:
                 pass
             # Status Update
-            if c in [self.col_dict["SS"], self.col_dict["CAddr"], self.col_dict["Addr"], self.col_dict["Sel"], self.col_dict["DataSize"],
-                     self.col_dict["EnbBits"], self.col_dict["BinW"], self.col_dict["DecW"], self.col_dict["VolW"]]:
-                _enRead = str(self.data.at[r, "SS"]).isdigit() and str(self.data.at[r, "Addr"]).isdigit() and str(
-                    self.data.at[r, "DataSize"]).isdigit() and str(self.data.at[r, "EnbBits"]).isdigit() and str(self.data.at[r, "Sel"]).isdigit()
-                _enWrite = _enRead and str(self.data.at[r, "DecW"]).isdigit()
-                self.button_read_en[r] = _enRead
-                self.button_write_en[r] = _enWrite
-                self.button_read[r].setEnabled(SPIConnFlag and self.button_read_en[r])
-                self.button_write[r].setEnabled(SPIConnFlag and self.button_write_en[r])
+            if self.cols_headers[c] in ["SS", "CAddr", "Addr", "Pos", "RegSize", "Size", "BinW", "DecW", "VolW"]:
+                self.button_enable_set(r)
             self.onLoading = False
         self.blockSignals(False)
 
@@ -294,20 +403,44 @@ class LoadTable(QtWidgets.QTableWidget):
         for index in self.selectedIndexes():
             r = index.row()
             if self.button_read_en[r] is True:
-                nbit = int(self.data.at[r, "EnbBits"])
-                self.SelectedTx.emit(r+1, self.data.at[r, "Name"], nbit)
+                global Protocol
+                if Protocol == "CA":
+                    _size = 10
+                else:
+                    _size = self.data.at[r, "Size"]
+                self.SelectedTx.emit(r+1, self.data.at[r, "Name"], int(_size))
 
-    def setTable(self, r, c, data, flag="W"):
+    def setTable(self, r, c, data, flag=""):
         if data is None:
             data = ""
+        if "F" in flag:
+            try:
+                float_data = float(data)
+                data = f"{float_data:.4f}"
+            except Exception as e:
+                data = ""
         _temp = QtWidgets.QTableWidgetItem()
-        if flag == "R":
+        if "R" in flag:
             _temp.setData(QtCore.Qt.DisplayRole, data)
             _temp.setFlags(QtCore.Qt.ItemIsEnabled)
         else:
             _temp.setData(QtCore.Qt.EditRole, data)
         self.setItem(r, c, _temp)
         self.item(r, c).setTextAlignment(QtCore.Qt.AlignCenter)
+
+    def button_enable_set(self, r):
+        global Protocol
+        if Protocol == "CA":
+            cols_key = ["SS", "CAddr", "Addr"]
+        else:
+            cols_key = ["SS", "Addr", "RegSize", "Size", "Pos"]
+        _enRead = all(str(self.data.at[r, col]).isdigit() for col in cols_key)
+
+        _enWrite = _enRead and str(self.data.at[r, "DecW"]).isdigit()
+        self.button_read_en[r] = _enRead
+        self.button_write_en[r] = _enWrite
+        self.button_read[r].setEnabled(SPIConnFlag and _enRead)
+        self.button_write[r].setEnabled(SPIConnFlag and _enWrite)
 
     def menuClose(self):
         self.keywords[self.col] = []
@@ -327,9 +460,10 @@ class LoadTable(QtWidgets.QTableWidget):
 
         for i in range(self.rowCount()):
             for j in self.Filter_cols:
-                item = self.item(i, j)
-                if self.keywords[j]:
-                    if item.text() not in self.keywords[j]:
+                col = self.col_dict[j]
+                item = self.item(i, col)
+                if self.keywords[col]:
+                    if item.text() not in self.keywords[col]:
                         columnsShow[i] = False
         for key in columnsShow:
             self.setRowHidden(key, not columnsShow[key])
@@ -343,7 +477,7 @@ class LoadTable(QtWidgets.QTableWidget):
             print(qaction.text() + " is triggered!")
 
     def columnfilterclicked(self, index):
-        if index not in self.Filter_cols:
+        if self.cols_headers[index] not in self.Filter_cols:
             return
         self.FilterMenu = QtWidgets.QMenu()
         self.col = index
@@ -453,7 +587,7 @@ class LoadTable(QtWidgets.QTableWidget):
                     return
             else:
                 return
-        self.FilterConfig = [dict([(str(_), True) for _ in self.data.iloc[:, idx].drop_duplicates().tolist()]) for idx
+        self.FilterConfig = [dict([(str(_), True) for _ in self.data.loc[:, idx].drop_duplicates().tolist()]) for idx
                              in self.Filter_cols]
         self.onLoading = True
         self.setRowCount(0)
@@ -467,29 +601,46 @@ class LoadTable(QtWidgets.QTableWidget):
 
         for index, row in self.data.iterrows():
             for _ in self.cols_headers:
-                if _ in self.cols_int:
+                _flag = ""
+                if _.endswith("R"):
+                    _flag += "R"
+                if _.startswith("Vol"):
+                    _flag += "F"
+                if self.col_dict[_] in self.cols_int:
                     self.setTable(index, self.col_dict[_], intSafe(row[_]))
-                elif _.endswith("R"):
-                    self.setTable(index, self.col_dict[_], str(row[_]), "R")
                 elif _ not in ["Read", "Write", "-", "+"]:
-                    self.setTable(index, self.col_dict[_], str(row[_]))
+                    self.setTable(index, self.col_dict[_], str(row[_]), _flag)
+            if row["DecW"] == "":
+                if row["BinW"]:
+                    _dec = int(row["BinW"], 2)
+                    self.data.at[index, "DecW"] = _dec
+                    self.setTable(index, self.col_dict["DecW"], _dec)
+                else:
+                    _dec = self.voltage2dec(row["VolMax"], row["VolMin"], row["VolW"], row["Size"])
+                    if _dec is not None:
+                        self.data.at[index, "DecW"] = _dec
+                        self.setTable(index, self.col_dict["DecW"], _dec)
+            if row["BinW"] == "":
+                if str(self.data.at[index, "DecW"]).isdigit() and str(row["Size"]).isdigit() and row["Size"]:
+                    self.setbin(index, int(self.data.at[index, "DecW"]), row["Size"])
+            if row["VolW"] == "":
+                if str(self.data.at[index, "DecW"]).isdigit() and str(row["Size"]).isdigit() and row["Size"]:
+                    _vol = self.dec2voltage(row["VolMax"], row["VolMin"], self.data.at[index, "DecW"], row["Size"])
+                    if _vol is not None:
+                        self.data.at[index, "VolW"] = _vol
+                        self.setTable(index, self.col_dict["VolW"], _vol, "F")
 
             button_read = QtWidgets.QPushButton('Read')
             button_read.clicked.connect(lambda *args, rowcount=index: self.handleReadClicked(rowcount))
             self.button_read.append(button_read)
+            self.button_read_en.append(False)
             button_write = QtWidgets.QPushButton('Write')
             button_write.clicked.connect(lambda *args, rowcount=index: self.handleWriteClicked(rowcount))
             self.button_write.append(button_write)
-
-            _enRead = str(row["SS"]).isdigit() and str(row["Addr"]).isdigit() and str(
-                row["DataSize"]).isdigit() and str(row["EnbBits"]).isdigit() and str(row["Sel"]).isdigit()
-            _enWrite = _enRead and str(row["DecW"]).isdigit()
-            self.button_read_en.append(_enRead)
-            self.button_write_en.append(_enWrite)
-            button_read.setEnabled(SPIConnFlag and _enRead)
-            button_write.setEnabled(SPIConnFlag and _enWrite)
+            self.button_write_en.append(False)
             self.setCellWidget(index, self.col_dict["Read"], button_read)
             self.setCellWidget(index, self.col_dict["Write"], button_write)
+            self.button_enable_set(index)
 
             button_minus = QtWidgets.QPushButton('-')
             button_minus.clicked.connect(lambda *args, rowcount=index: self.handleMinusClicked(rowcount))
@@ -500,22 +651,20 @@ class LoadTable(QtWidgets.QTableWidget):
             button_plus.clicked.connect(lambda *args, rowcount=index: self.handlePlusClicked(rowcount))
             self.button_plus.append(button_plus)
             self.setCellWidget(index, self.col_dict["+"], button_plus)
-
         self.onLoading = False
 
     @QtCore.pyqtSlot()
     def addrow(self):
-        global Protocol
         if len(self.selectedIndexes()) is 0:
             rowcount = self.rowCount()
             if rowcount is 0:
                 newRowSeries = pd.Series([None for _ in range(len(self.data_headers))], index=self.data_headers)
                 for _ in self.data_headers:
-                    if _ in ["SS", "CAddr", "Addr", "Sel"]:
+                    if _ in ["SS", "CAddr", "Addr", "Pos"]:
                         newRowSeries.at[_] = 0
-                    elif _ == "DataSize":
+                    elif _ == "RegSize":
                         newRowSeries.at[_] = 13
-                    elif _ == "EnbBits":
+                    elif _ == "Size":
                         newRowSeries.at[_] = 10
                     elif _ == "VolMax":
                         newRowSeries.at[_] = 1.00
@@ -531,17 +680,13 @@ class LoadTable(QtWidgets.QTableWidget):
         else:
             rowcount = self.selectedIndexes()[-1].row() + 1
             newRowSeries = self.data.iloc[rowcount-1]
-            newRowSeries["Addr"] += 1
+            if str(newRowSeries["Addr"]).isdigit():
+                newRowSeries["Addr"] = int(newRowSeries["Addr"]) + 1
 
         self.insertRow(rowcount)
         _data = self.data[0:rowcount]
         self.data = _data.append(newRowSeries, ignore_index=True).append(self.data[rowcount:], ignore_index=True)
         self.data.reset_index(drop=True, inplace=True)
-        if Protocol == "CS":
-            _series = pd.Series([1, newRowSeries["DataSize"], newRowSeries["EnbBits"]], index=["Sel", "DataSize", "EnbBits"])
-            _backup = self.mode_backup[0:rowcount]
-            self.mode_backup = _backup.append(_series, ignore_index=True).append(self.mode_backup[rowcount:], ignore_index=True)
-            self.mode_backup.reset_index(drop=True, inplace=True)
 
         button_read = QtWidgets.QPushButton('Read')
         button_read.clicked.connect(lambda *args, rowcount=rowcount: self.handleReadClicked(rowcount))
@@ -569,17 +714,19 @@ class LoadTable(QtWidgets.QTableWidget):
 
         self.onLoading = True
         for _ in self.cols_headers:
-            if _ in self.cols_int:
+            _flag = ""
+            if _.endswith("R"):
+                _flag += "R"
+            if _.startswith("Vol"):
+                _flag += "F"
+            if self.col_dict[_] in self.cols_int:
                 self.setTable(rowcount, self.col_dict[_], intSafe(newRowSeries[_]))
-            elif _.endswith("R"):
-                self.setTable(rowcount, self.col_dict[_], str(newRowSeries[_]), "R")
             elif _ not in ["Read", "Write", "-", "+"]:
-                self.setTable(rowcount, self.col_dict[_], str(newRowSeries[_]))
+                self.setTable(rowcount, self.col_dict[_], str(newRowSeries[_]), _flag)
         self.onLoading = False
 
     @QtCore.pyqtSlot()
     def removerow(self):
-        global Protocol
         rows = set()
         for index in self.selectedIndexes():
             rows.add(index.row())
@@ -595,9 +742,6 @@ class LoadTable(QtWidgets.QTableWidget):
 
             self.data = self.data.drop(index=rows)
             self.data.reset_index(drop=True, inplace=True)
-            if Protocol == "CS":
-                self.mode_backup = self.mode_backup.drop(index=rows)
-                self.mode_backup.reset_index(drop=True, inplace=True)
             rows = sorted(rows)
 
             if rows[0] < len(self.button_read):
@@ -614,19 +758,31 @@ class LoadTable(QtWidgets.QTableWidget):
     @QtCore.pyqtSlot(int)
     def handleReadClicked(self, r):
         global Protocol
+        raspi_flag = self.isColumnHidden(self.col_dict["Term"])
+        term = ""
+        if not raspi_flag:
+            term = self.data.at[r, "Term"]
+            term = str(term).replace(" ", "")
 
         cs = int(self.data.at[r, "SS"])
-        size = int(self.data.at[r, "DataSize"])
         caddr = int(self.data.at[r, "CAddr"])
         addr = int(self.data.at[r, "Addr"])
-        sel = int(self.data.at[r, "Sel"])
-        nBits = int(self.data.at[r, "EnbBits"])
 
-        if Protocol == "CS":
-            res = ni8452.read_reg(cs, caddr, addr)
+        if Protocol == "CA":
+            nBits = 10
+            if len(term) > 0:
+                res = self.client.read_reg(term, cs, caddr, addr)
+            else:
+                res = ni8452.read_reg(cs, caddr, addr)
             res = res % (2 ** 10)
         else:
-            res = ni8452.spi_read(cs, addr, size)
+            sel = int(self.data.at[r, "Pos"])
+            size = int(self.data.at[r, "RegSize"])
+            nBits = int(self.data.at[r, "Size"])
+            if len(term) > 0:
+                res = self.client.spi_read(term, cs, addr, size)
+            else:
+                res = ni8452.spi_read(cs, addr, size)
             if sel == 0:
                 if size is not nBits:
                     res = res % (2 ** nBits)
@@ -646,7 +802,7 @@ class LoadTable(QtWidgets.QTableWidget):
         _temp.setFlags(QtCore.Qt.ItemIsEnabled)
         self.setItem(r, self.col_dict["BinR"], _temp)
         self.Table2ListSync.emit(r)
-        _vol = self.dec2voltage(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], res, self.data.at[r, "EnbBits"])
+        _vol = self.dec2voltage(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], res, nBits)
         if _vol is not None:
             _temp = QtWidgets.QTableWidgetItem()
             _temp.setData(QtCore.Qt.DisplayRole, _vol)
@@ -656,25 +812,39 @@ class LoadTable(QtWidgets.QTableWidget):
     @QtCore.pyqtSlot(int)
     def handleWriteClicked(self, r):
         global Protocol
+        raspi_flag = self.isColumnHidden(self.col_dict["Term"])
+        term = ""
+        if not raspi_flag:
+            term = self.data.at[r, "Term"]
+            term = str(term).replace(" ", "")
 
         cs = int(self.data.at[r, "SS"])
         caddr = int(self.data.at[r, "CAddr"])
         data = int(self.data.at[r, "DecW"])
-        size = int(self.data.at[r, "DataSize"])
         addr = int(self.data.at[r, "Addr"])
-        sel = int(self.data.at[r, "Sel"])
-        nBits = int(self.data.at[r, "EnbBits"])
 
-        if Protocol == "CS":
-            ni8452.write_reg(cs, caddr, addr, data)
+        if Protocol == "CA":
+            if len(term) > 0:
+                self.client.write_reg(term, cs, caddr, addr, data)
+            else:
+                ni8452.write_reg(cs, caddr, addr, data)
         else:
+            sel = int(self.data.at[r, "Pos"])
+            size = int(self.data.at[r, "RegSize"])
+            nBits = int(self.data.at[r, "Size"])
             if sel is not 0:
-                res = ni8452.spi_read(cs, addr, size)
+                if len(term) > 0:
+                    self.client.spi_read(term, cs, addr, size)
+                else:
+                    res = ni8452.spi_read(cs, addr, size)
                 _format = "0" + str(size) + "b"
                 _mask = 2 ** size - 1 - (2 ** nBits - 1) * (2 ** (sel - 1))
                 mask = format(_mask, _format)
                 data = (res & int(mask, 2)) | (data << (sel - 1))
-            ni8452.spi_write(cs, addr, data, size)
+            if len(term) > 0:
+                self.client.spi_write(term, cs, addr, data, size)
+            else:
+                ni8452.spi_write(cs, addr, data, size)
         self.handleReadClicked(r)
 
     @QtCore.pyqtSlot(int)
@@ -694,11 +864,15 @@ class LoadTable(QtWidgets.QTableWidget):
     @QtCore.pyqtSlot(int)
     def handlePlusClicked(self, r):
         if self.button_write_en[r]:
+            global Protocol
+            if Protocol == "CA":
+                _size = 10
+            else:
+                _size = self.data.at[r, "Size"]
             data = int(self.data.at[r, "DecW"])
-            nBits = int(self.data.at[r, "EnbBits"])
             unit = self.item(r, self.col_dict["Unit"]).data(QtCore.Qt.EditRole)
             res = data + unit
-            if res > (2**nBits-1):
+            if res > (2**int(_size)-1):
                 return
             _temp = QtWidgets.QTableWidgetItem()
             _temp.setData(QtCore.Qt.EditRole, res)
@@ -708,9 +882,14 @@ class LoadTable(QtWidgets.QTableWidget):
 
     def button_update(self):
         for _ in range(len(self.button_read)):
-            self.button_read[_].setEnabled(SPIConnFlag and self.button_read_en[_])
-        for _ in range(len(self.button_write)):
-            self.button_write[_].setEnabled(SPIConnFlag and self.button_write_en[_])
+            self.button_enable_set(_)
+
+    def setbin(self, r, dec, size):
+        _format = "0" + str(size) + "b"
+        _bin = format(dec, _format)
+        self.data.at[r, "BinW"] = _bin
+        self.setItem(r, self.col_dict["BinW"], QtWidgets.QTableWidgetItem(_bin))
+        self.item(r, self.col_dict["BinW"]).setTextAlignment(QtCore.Qt.AlignCenter)
 
     def dec2voltage(self, Volmax, Volmin, dec, nbits):
         try:
@@ -722,7 +901,7 @@ class LoadTable(QtWidgets.QTableWidget):
             return None
         if nbits == 0:
             return None
-        voltage = (Volmax - Volmin) * dec/(2**nbits-1) + Volmin
+        voltage = (Volmax - Volmin) * dec/(2**nbits-1)
         if voltage > Volmax:
             voltage = Volmax
         elif voltage < Volmin:
@@ -748,12 +927,12 @@ class LoadTable(QtWidgets.QTableWidget):
 
 
 class ShortCutList(QtWidgets.QTableWidget):
-    Tx = QtCore.pyqtSignal(bool,int)
-    dataset = QtCore.pyqtSignal(list,int)
+    Tx = QtCore.pyqtSignal(bool, int)
+    dataset = QtCore.pyqtSignal(list, int)
     def __init__(self,parent=None):
-        super(ShortCutList, self).__init__(0,6,parent)
+        super(ShortCutList, self).__init__(0, 6, parent)
         self.verticalHeader().hide()
-        self.setHorizontalHeaderLabels(["Name","Range","Bin","Dec","Read","Write"])
+        self.setHorizontalHeaderLabels(["Name", "Range", "Bin", "Dec", "Read", "Write"])
         self.horizontalHeader().setStyleSheet("QHeaderView::section{"
             "border-top:0px solid #D8D8D8;"
             "border-left:0px solid #D8D8D8;"
@@ -768,7 +947,7 @@ class ShortCutList(QtWidgets.QTableWidget):
         self.button_write_en = []
         self.ReadData = []
         self.ReadList = []
-        self.data = pd.DataFrame(columns=["Name","Range","Bin","Dec","Length"])
+        self.data = pd.DataFrame(columns=["Name", "Range", "Bin", "Dec", "Length"])
         self.onLoading = False
 
         self.setColumnWidth(0, 100)
@@ -857,7 +1036,6 @@ class ShortCutList(QtWidgets.QTableWidget):
                 self.button_read[r].setEnabled(SPIConnFlag and self.button_read_en[r])
                 self.button_write[r].setEnabled(SPIConnFlag and self.button_write_en[r])
 
-
             elif c is 2:
                 if self.ReadData[row] is None:
                     self.onLoading = False
@@ -889,9 +1067,7 @@ class ShortCutList(QtWidgets.QTableWidget):
                     _bin = Float2FixPointBin(_dec, nint, self.data.at[row, "Length"] - _index - 1)
                 self.data.at[row, "Bin"] = _bin
                 self.item(r, 2).setData(QtCore.Qt.EditRole, _bin)
-                #self.button_write_en[row] = True
             elif c is 3:
-            #elif c is 3 and self.button_read_en[row]:
                 if self.ReadData[row] is None:
                     self.onLoading = False
                     return
@@ -917,7 +1093,6 @@ class ShortCutList(QtWidgets.QTableWidget):
                     _bin = Float2FixPointBin(float(text), nint, self.data.at[row, "Length"] - _index - 1)
                 self.data.at[row, "Bin"] = _bin
                 self.item(r, 2).setData(QtCore.Qt.EditRole, _bin)
-                #self.button_write_en_en[row] = True
             else:
                 pass
             self.onLoading = False
@@ -1082,6 +1257,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.list = ShortCutList()
         self.var = VarTable()
         self.table.Table2ListSync.connect(self.pickersync)
+        self.table.client.tcp_signal.connect(self.tcp_panel)
         self.list.Tx.connect(self.handleBackbone)
         self.list.dataset.connect(self.length_data)
 
@@ -1103,6 +1279,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cs_action.setCheckable(True)
         self.cs_action.triggered.connect(self.mode_toggle_cs)
         modeMenu.addAction(self.cs_action)
+        modeMenu.addSeparator()
+        self.raspi_action = QtWidgets.QAction("Via Raspberry Pi", self)
+        self.raspi_action.setStatusTip("Remote SPI with Raspberry Pi Pico W")
+        self.raspi_action.setCheckable(True)
+        self.raspi_action.triggered.connect(self.raspi_switch)
+        modeMenu.addAction(self.raspi_action)
 
         toolsMenu = mainMenu.addMenu('Tools')
         RawDataView = toolsMenu.addMenu("Raw Data")
@@ -1269,11 +1451,11 @@ class MainWindow(QtWidgets.QMainWindow):
         conhbox.addWidget(self.led)
 
         reset_button = QtWidgets.QPushButton("Reset")
-        reset_button.setFixedSize(QtCore.QSize(100, 30))
+        reset_button.setFixedSize(QtCore.QSize(75, 30))
         reset_button.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
         reset_button.clicked.connect(self.reset_spi)
         self.resetInput = QtWidgets.QSpinBox()
-        self.resetInput.setFixedWidth(60)
+        self.resetInput.setFixedWidth(40)
         self.resetInput.setMinimum(0)
         self.resetInput.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
 
@@ -1289,9 +1471,54 @@ class MainWindow(QtWidgets.QMainWindow):
         setupbox.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
         setupbox.setLayout(setupvbox)
 
+        self.combox_clk_raspi = QtWidgets.QComboBox()
+        self.combox_clk_raspi.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        self.combox_clk_raspi.addItems(
+            ["25", "32", "40", "50", "80", "100", "125", "160", "200", "250", "400", "500", "625", "800", "1000",
+             "1250", "2500", "3125", "4000", "5000", "6250", "10000", "12500", "20000", "25000", "33330", "50000"])
+        clockhbox = QtWidgets.QHBoxLayout()
+        _label = QtWidgets.QLabel("Clock:")
+        _label.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        clockhbox.addWidget(_label)
+        clockhbox.addWidget(self.combox_clk_raspi)
+        _label = QtWidgets.QLabel("kHz")
+        _label.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        clockhbox.addWidget(_label)
+
+        combox_vol = QtWidgets.QComboBox()
+        combox_vol.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        combox_vol.addItems(["3.3", "2.5", "1.8", "1.5", "1.2"])
+        combox_vol.setCurrentText("3.3")
+        combox_vol.setEnabled(False)
+        volhbox = QtWidgets.QHBoxLayout()
+        _label = QtWidgets.QLabel("Voltage:")
+        _label.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        volhbox.addWidget(_label)
+        volhbox.addWidget(combox_vol)
+        _label = QtWidgets.QLabel("V")
+        _label.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        volhbox.addWidget(_label)
+
+        self.button_discover = QtWidgets.QPushButton('Discover')
+        self.button_discover.setFixedSize(QtCore.QSize(100, 30))
+        self.button_discover.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        self.button_discover.clicked.connect(self.tcp_discover)
+
+        self.raspihbox = QtWidgets.QHBoxLayout()
+        self.raspihbox.addLayout(clockhbox)
+        self.raspihbox.addLayout(volhbox)
+        self.raspihbox.addWidget(self.button_discover)
+        self.raspihbox.addStretch(1)
+
+        self.raspibox = QtWidgets.QGroupBox("Raspberry Pi")
+        self.raspibox.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        self.raspibox.setLayout(self.raspihbox)
+        self.raspibox.hide()
+        self.raspi_layout = {}
         mainlayout = QtWidgets.QVBoxLayout()
         #tablehbox.setContentsMargins(10, 10, 10, 10)
         mainlayout.addWidget(setupbox)
+        mainlayout.addWidget(self.raspibox)
         mainlayout.addLayout(button_layout)
         #grid = QtWidgets.QGridLayout(self)
         #grid.addLayout(ctrlbox, 0, 1)
@@ -1316,8 +1543,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 for col in self.table.data.columns:
                     if col in table_data.columns:
                         self.table.data[col] = table_data[col]
+                    elif col == "Pos" and "Sel" in table_data.columns:
+                        self.table.data[col] = table_data["Sel"]
+                    elif col == "RegSize" and "DataSize" in table_data.columns:
+                        self.table.data[col] = table_data["DataSize"]
+                    elif col == "Size" and "EnbBits" in table_data.columns:
+                        self.table.data[col] = table_data["EnbBits"]
                     else:
-                        self.table.data[col] = None
+                        self.table.data[col] = ""
                 f.close()
                 self.table.dataload(True)
                 self.list.dataload()
@@ -1362,9 +1595,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.picker.deleteAll()
         for _index in self.list.ReadList[row]:
             r = _index - 1
-            nbit = int(self.table.data.at[r, "EnbBits"])
-            self.picker.additem(_index, self.table.data.at[r, "Name"], nbit)
-            # self.table.SelectedTx.emit(index,self.table.data.at[r, self.table.cols_headers[3]],nbit)
+            global Protocol
+            if Protocol == "CA":
+                _size = 10
+            else:
+                _size = self.data.at[r, "Size"]
+            self.picker.additem(_index, self.table.data.at[r, "Name"], int(_size))
         for _index, _bit in self.list.ReadData[row]:
             if _index == -1:
                 self.picker.buttonPoint.click()
@@ -1568,13 +1804,17 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot()
     def reset_spi(self):
         global Protocol
-        if Protocol == "CS":
+
+        if Protocol == "CA":
             caddr = int(self.resetInput.value())
             ni8452.spi_reset_new(0, caddr)
+            for _ in self.table.client.connections:
+                self.table.client.spi_reset_new(_, 0, caddr)
         else:
             cs = int(self.resetInput.value())
-            print(cs)
             ni8452.spi_reset(cs)
+            for _ in self.table.client.connections:
+                self.table.client.spi_reset(_, cs)
 
     @QtCore.pyqtSlot()
     def spi_switch(self):
@@ -1617,37 +1857,85 @@ class MainWindow(QtWidgets.QMainWindow):
             ni8452.ni845xClose()
 
     @QtCore.pyqtSlot()
+    def raspi_switch(self):
+        if self.raspi_action.isChecked():
+            self.raspibox.show()
+            self.table.setColumnHidden(self.table.col_dict["Term"], False)
+        else:
+            self.raspibox.hide()
+            self.table.setColumnHidden(self.table.col_dict["Term"], True)
+
+    @QtCore.pyqtSlot()
+    def tcp_discover(self):
+        asyncio.run(self.table.client.connect(self.combox_clk_raspi.currentText()))
+
+    @QtCore.pyqtSlot(str, str)
+    def tcp_panel(self, name, cmd):
+        if cmd == "open":
+            _label_temp = QtWidgets.QLabel()
+            _ico = QtGui.QPixmap('chip.png')
+            _ico = _ico.scaled(32, 32)
+            _label_temp.setPixmap(_ico)
+            _label_name = QtWidgets.QLabel(name)
+            _label_name.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+            _button = QtWidgets.QPushButton('Disconnect')
+            _button.setFixedSize(QtCore.QSize(100, 30))
+            _button.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+            _button.clicked.connect(lambda *args, _name=name: self.raspi_delete(_name))
+            _led = led.MyLed()
+            _led.ConnFlag = True
+            _led.update()
+            conhbox = QtWidgets.QHBoxLayout()
+            conhbox.addWidget(_label_temp)
+            conhbox.addWidget(_label_name)
+            conhbox.addWidget(_button)
+            conhbox.addWidget(_led)
+            _strech = self.raspihbox.itemAt(self.raspihbox.count() - 1)
+            self.raspihbox.removeItem(_strech)
+            self.raspihbox.addLayout(conhbox)
+            self.raspihbox.addStretch(1)
+            self.raspi_layout[name] = conhbox
+        else:
+            for i in range(self.raspi_layout[name].count()):
+                item = self.raspi_layout[name].itemAt(i)
+                widget = item.widget()
+                if widget:
+                    widget.deleteLater()
+            self.raspi_layout[name].deleteLater()
+            self.raspi_layout[name] = None
+            del self.raspi_layout[name]
+
+    @QtCore.pyqtSlot(str)
+    def raspi_delete(self, name):
+        asyncio.run(self.table.client.tcp_close(name))
+
+    @QtCore.pyqtSlot()
     def mode_toggle_classic(self):
         global Protocol
-        if Protocol == "CS":
-            pass
-            #self.table.data[["Sel", "DataSize", "EnbBits"]] = self.table.mode_backup
         Protocol = "Classic"
         self.classic_action.setChecked(True)
         self.cs_action.setChecked(False)
         self.table.setColumnHidden(self.table.col_dict["CAddr"], True)
-        self.table.setColumnHidden(self.table.col_dict["Sel"], False)
-        self.table.setColumnHidden(self.table.col_dict["DataSize"], False)
-        self.table.setColumnHidden(self.table.col_dict["EnbBits"], False)
+        self.table.setColumnHidden(self.table.col_dict["Pos"], False)
+        self.table.setColumnHidden(self.table.col_dict["RegSize"], False)
+        self.table.setColumnHidden(self.table.col_dict["Size"], False)
+        self.table.button_update()
 
     @QtCore.pyqtSlot()
     def mode_toggle_cs(self):
         global Protocol
-        if Protocol == "Classic":
-            pass
-            #self.table.mode_backup = self.table.data[["Sel", "DataSize", "EnbBits"]]
-            #self.table.data = self.table.data.assign(Sel=1, DataSize=10, EnbBits=10)
-        Protocol = "CS"
+        Protocol = "CA"
         self.classic_action.setChecked(False)
         self.cs_action.setChecked(True)
         self.table.setColumnHidden(self.table.col_dict["CAddr"], False)
-        self.table.setColumnHidden(self.table.col_dict["Sel"], True)
-        self.table.setColumnHidden(self.table.col_dict["DataSize"], True)
-        self.table.setColumnHidden(self.table.col_dict["EnbBits"], True)
+        self.table.setColumnHidden(self.table.col_dict["Pos"], True)
+        self.table.setColumnHidden(self.table.col_dict["RegSize"], True)
+        self.table.setColumnHidden(self.table.col_dict["Size"], True)
+        self.table.button_update()
 
 
     def voltageModeSwitch(self):
-        if self.table.isColumnHidden(5):
+        if self.table.isColumnHidden(self.table.col_dict["VolMax"]):
             self.table.setColumnHidden(self.table.col_dict["VolMax"], False)
             self.table.setColumnHidden(self.table.col_dict["VolMin"], False)
             self.table.setColumnHidden(self.table.col_dict["VolR"], False)
@@ -1661,7 +1949,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.vol_button.setText("Show Voltage")
 
     def instantswitch(self):
-        if self.table.isColumnHidden(17):
+        if self.table.isColumnHidden(self.table.col_dict["-"]):
             self.table.setColumnHidden(self.table.col_dict["-"], False)
             self.table.setColumnHidden(self.table.col_dict["+"], False)
             self.table.setColumnHidden(self.table.col_dict["Unit"], False)
@@ -1673,6 +1961,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.instant_button.setText("Show Inst.W")
 
     def closeEvent(self, event):
+        for _ in self.table.client.connections:
+            asyncio.run(self.table.client.tcp_close(_))
         f = open('config.spi', 'wb')
         pkl.dump((self.table.data, self.list.data, self.list.ReadData, self.list.ReadList, self.table.default_path), f)
         f.close()
@@ -1724,7 +2014,11 @@ class MainWindow(QtWidgets.QMainWindow):
         count = 0
         for _ in ReadData:
             if type(_) is int:
-                _length = intSafe(self.table.data.at[_-1, "EnbBits"])
+                global Protocol
+                if Protocol == "CA":
+                    _length = 10
+                else:
+                    _length = intSafe(self.table.data.at[_-1, "Size"])
                 if _length is not None:
                     count = count + _length
             elif len(_) == 2:
@@ -1768,9 +2062,23 @@ class MainWindow(QtWidgets.QMainWindow):
                 _temp = _.split(",")
                 print(_temp)
 
+    def exc_handle(self):
+        for _ in self.table.client.connections:
+            asyncio.run(self.table.client.tcp_close(_))
+
+
+def exception_hook(exc_type, exc_value, traceback):
+    global main_window
+    main_window.exc_handle()
+    print(f"Unhandled exception: {exc_value}")
+    sys.__excepthook__(exc_type, exc_value, traceback)
+    sys.exit(1)
+
 
 if __name__ == '__main__':
+    global main_window
+    sys.excepthook = exception_hook
     app = QtWidgets.QApplication(sys.argv)
-    w = MainWindow()
-    w.show()
+    main_window = MainWindow()
+    main_window.show()
     sys.exit(app.exec_())
