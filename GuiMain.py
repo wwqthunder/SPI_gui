@@ -343,7 +343,7 @@ class LoadTable(QtWidgets.QTableWidget):
                         self.onLoading = False
                         self.blockSignals(False)
                         return
-            elif c == self.col_dict["VolW"]:
+            elif self.cols_headers[c].startswith("Vol"):
                 try:
                     float_data = float(text)
                     self.setTable(r, c, str(float_data), "F")
@@ -619,10 +619,11 @@ class LoadTable(QtWidgets.QTableWidget):
                 if _.startswith("Vol"):
                     _flag += "F"
                 if self.col_dict[_] in self.cols_int:
+                    self.data.at[index, _] = intSafe(row[_])
                     self.setTable(index, self.col_dict[_], intSafe(row[_]))
                 elif _ not in ["Read", "Write", "-", "+"]:
                     self.setTable(index, self.col_dict[_], str(row[_]), _flag)
-            if row["DecW"] == "":
+            if str(row["DecW"]) == "":
                 if row["BinW"]:
                     _dec = int(row["BinW"], 2)
                     self.data.at[index, "DecW"] = _dec
@@ -632,10 +633,10 @@ class LoadTable(QtWidgets.QTableWidget):
                     if _dec is not None:
                         self.data.at[index, "DecW"] = _dec
                         self.setTable(index, self.col_dict["DecW"], _dec)
-            if row["BinW"] == "":
+            if str(row["BinW"]) == "":
                 if str(self.data.at[index, "DecW"]).isdigit() and str(row["Size"]).isdigit() and row["Size"]:
                     self.setbin(index, int(self.data.at[index, "DecW"]), row["Size"])
-            if row["VolW"] == "":
+            if str(row["VolW"]).replace(" ", "") == "":
                 if str(self.data.at[index, "DecW"]).isdigit() and str(row["Size"]).isdigit() and row["Size"]:
                     _vol = self.dec2voltage(row["VolMax"], row["VolMin"], self.data.at[index, "DecW"], row["Size"])
                     if _vol is not None:
@@ -687,11 +688,11 @@ class LoadTable(QtWidgets.QTableWidget):
                     else:
                         newRowSeries.at[_] = ""
             else:
-                newRowSeries = self.data.iloc[-1]
+                newRowSeries = self.data.iloc[-1].copy()
                 newRowSeries["Addr"] += 1
         else:
             rowcount = self.selectedIndexes()[-1].row() + 1
-            newRowSeries = self.data.iloc[rowcount-1]
+            newRowSeries = self.data.iloc[rowcount-1].copy()
             if str(newRowSeries["Addr"]).isdigit():
                 newRowSeries["Addr"] = int(newRowSeries["Addr"]) + 1
 
@@ -723,6 +724,16 @@ class LoadTable(QtWidgets.QTableWidget):
         button_plus.clicked.connect(lambda *args, rowcount=rowcount: self.handlePlusClicked(rowcount))
         self.button_plus.insert(rowcount, button_plus)
         self.setCellWidget(rowcount, self.col_dict["+"], button_plus)
+        if rowcount < self.rowCount():
+            for _ in range(len(self.button_write)):
+                self.button_write[_].clicked.disconnect()
+                self.button_write[_].clicked.connect(lambda *args, _row=_: self.handleWriteClicked(_row))
+                self.button_read[_].clicked.disconnect()
+                self.button_read[_].clicked.connect(lambda *args, _row=_: self.handleReadClicked(_row))
+                self.button_minus[_].clicked.disconnect()
+                self.button_minus[_].clicked.connect(lambda *args, _row=_: self.handleMinusClicked(_row))
+                self.button_plus[_].clicked.disconnect()
+                self.button_plus[_].clicked.connect(lambda *args, _row=_: self.handlePlusClicked(_row))
 
         self.onLoading = True
         for _ in self.cols_headers:
@@ -845,7 +856,7 @@ class LoadTable(QtWidgets.QTableWidget):
             nBits = int(self.data.at[r, "Size"])
             if sel is not 0:
                 if len(term) > 0:
-                    self.client.spi_read(term, cs, addr, size)
+                    res = self.client.spi_read(term, cs, addr, size)
                 else:
                     res = ni8452.spi_read(cs, addr, size)
                 _format = "0" + str(size) + "b"
@@ -1548,7 +1559,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.showMaximized()
 
         if os.path.exists("config.spi") is True:
-            try:
+            #try:
                 f = open('config.spi', 'rb')
                 table_data, self.list.data, self.list.ReadData, self.list.ReadList, self.table.default_path = pkl.load(f)
                 for col in self.table.data.columns:
@@ -1565,8 +1576,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 f.close()
                 self.table.dataload(True)
                 self.list.dataload()
-            except Exception as e:
-                pass
+            #except Exception as e:
+            #    pass
 
     @QtCore.pyqtSlot()
     def PickerCaller(self):
@@ -1985,14 +1996,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.instant_button.setText("Show Inst.W")
 
     def closeEvent(self, event):
-        for _ in self.table.client.connections:
-            asyncio.run(self.table.client.tcp_close(_))
         f = open('config.spi', 'wb')
         pkl.dump((self.table.data, self.list.data, self.list.ReadData, self.list.ReadList, self.table.default_path), f)
         f.close()
         if self.led.ConnFlag is True:
             ni8452.ni845xSpiConfigurationClose()
             ni8452.ni845xClose()
+        for _ in self.table.client.connections:
+            asyncio.run(self.table.client.tcp_close(_))
 
     @QtCore.pyqtSlot()
     def lock_switch(self):

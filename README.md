@@ -11,7 +11,7 @@ You may need to connect to the libra server of Okada Lab.
 
 `\\libra\public\10Tapeout\tsmc65nm\SPI制御ソフト\SPI-Slave仕様_v4.pptx`
 
-## Installation
+## Installation (For developer only)
 
 First of all, if you do not have a Python environment, you can go to
 [the official website of Anaconda](https://www.anaconda.com/products/individual)
