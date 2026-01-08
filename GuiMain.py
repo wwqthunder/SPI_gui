@@ -584,21 +584,7 @@ class LoadTable(QtWidgets.QTableWidget):
                 self.setRowHidden(idx, False)
         self.FilterMenu.close()
 
-    def dataload(self, load_flag):
-        if load_flag is False:
-            if not os.path.exists(self.default_path):
-                self.default_path = os.getcwd()
-            path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import SPI File", self.default_path,
-                                                            "Data Files (*.xlsm *.xls *.xlsx *.csv)")
-            if path:
-                try:
-                    self.default_path = os.path.dirname(path)
-                    self.data = FileIO.load(path)
-                except Exception as e:
-                    QtWidgets.QMessageBox.critical(self, "Error", "FAIL TO LOAD!")
-                    return
-            else:
-                return
+    def dataload(self):
         self.FilterConfig = [dict([(str(_), True) for _ in self.data.loc[:, idx].drop_duplicates().tolist()]) for idx
                              in self.Filter_cols]
         self.onLoading = True
@@ -1329,7 +1315,7 @@ class MainWindow(QtWidgets.QMainWindow):
         load_button = QtWidgets.QPushButton("Load")
         load_button.setFixedSize(QtCore.QSize(100, 30))
         load_button.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
-        load_button.clicked.connect(self.table.dataload)
+        load_button.clicked.connect(self.dataload)
         save_button = QtWidgets.QPushButton("Save")
         save_button.setFixedSize(QtCore.QSize(100, 30))
         save_button.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
@@ -1559,7 +1545,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.showMaximized()
 
         if os.path.exists("config.spi") is True:
-            #try:
+            try:
                 f = open('config.spi', 'rb')
                 table_data, self.list.data, self.list.ReadData, self.list.ReadList, self.table.default_path = pkl.load(f)
                 for col in self.table.data.columns:
@@ -1574,10 +1560,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     else:
                         self.table.data[col] = ""
                 f.close()
-                self.table.dataload(True)
+                self.table.dataload()
                 self.list.dataload()
-            #except Exception as e:
-            #    pass
+            except Exception as e:
+                pass
 
     @QtCore.pyqtSlot()
     def PickerCaller(self):
@@ -2033,16 +2019,35 @@ class MainWindow(QtWidgets.QMainWindow):
             self.delete_button_sc.setEnabled(True)
             self.lock_button_sc.setText("Lock")
 
+    def dataload(self):
+        if not os.path.exists(self.table.default_path):
+            self.table.default_path = os.getcwd()
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import SPI File", self.table.default_path,
+                                                        "Data Files (*.xlsm *.xls *.xlsx *.csv)")
+        if path:
+            try:
+                self.table.default_path = os.path.dirname(path)
+                self.table.data, shortcut = FileIO.load(path)
+                self.table.dataload()
+                if shortcut is not None:
+                    self.list.data = shortcut
+                    self.list.dataload()
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(self, "Error", "FAIL TO LOAD!")
+                return
+        else:
+            return
+
     def save_data(self):
         f = open('config.spi', 'wb')
         pkl.dump((self.table.data, self.list.data, self.list.ReadData, self.list.ReadList, self.table.default_path), f)
         f.close()
         if not os.path.exists(self.table.default_path):
             self.table.default_path = os.getcwd()
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save SPI Data", self.table.default_path, "CSV Files (*.csv)")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save SPI Data", self.table.default_path, "Excel Files (*.xlsx)")
         if path:
             self.table.default_path = os.path.dirname(path)
-            FileIO.df2csv(path, self.table.data)
+            FileIO.df2xlsx(path, self.table.data, self.list.data)
 
     @QtCore.pyqtSlot(list, int)
     def length_data(self, ReadData, row):

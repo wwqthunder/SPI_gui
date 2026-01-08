@@ -8,15 +8,17 @@ cols_headers = ["SS", "CAddr", "Addr", "Sel", "Name", "VolMax", "VolMin", "DataS
 cols_box = ["SS","Addr","Sel","Name","VolMax","VolMin","DataSize","EnbBits","BinVal","DecVal"]
 data_headers = ["Term", "SS", "CAddr", "Addr", "Pos", "Name", "VolMax", "VolMin", "RegSize", "Size",
                              "BinR", "DecR", "VolR", "BinW", "DecW", "VolW", "Unit"]
+shortcut_headers = ["Name", "Range", "Bin", "Dec"]
 
 def load(path):
     _, extension = os.path.splitext(path)
+    shortcut = None
     if '.xlsm' in extension:
         data = loadxlsm(path)
     elif '.csv' in extension:
         data = loadcsv(path)
     else:
-        data = loadxls(path)
+        data, shortcut = loadxls(path)
     for col in ["BinR", "BinW"]:
         data[col] = data[col].apply(lambda x: str(x) if is_bin(x) else "")
     for col in ["SS", "CAddr", "Addr", "Pos", "RegSize", "Size", "DecR", "DecW", "Unit"]:
@@ -24,7 +26,7 @@ def load(path):
     for col in ["VolMax", "VolMin", "VolR", "VolW"]:
         data[col] = data[col].apply(lambda x: str(x) if is_float(x) else "")
     data.reset_index(drop=True, inplace=True)
-    return data
+    return data, shortcut
 
 
 def loadxlsm(path):
@@ -56,7 +58,8 @@ def loadcsv(path):
 
 
 def loadxls(path):
-    raw = pd.read_excel(open(path, 'rb'), dtype=object, na_filter=False)
+    xls = pd.ExcelFile(path)
+    raw = pd.read_excel(xls, sheet_name=0, dtype=object, na_filter=False)
     data = pd.DataFrame(data=[[""] * len(data_headers) for _ in range(raw.shape[0])], index=range(raw.shape[0]),
                         columns=data_headers)
     for _ in data_headers:
@@ -70,7 +73,10 @@ def loadxls(path):
             data[_] = raw["EnbBits"]
         else:
             continue
-    return data
+    if "shortcut" in xls.sheet_names:
+        shortcut = pd.read_excel(xls, sheet_name="shortcut", dtype=object, na_filter=False)
+        return data, shortcut
+    return data, None
 
 
 def is_bin(value):
@@ -97,6 +103,23 @@ def is_float(value):
 
 def df2csv(path, df):
     df.to_csv(path, index=False)
+
+
+def df2xlsx(path, df_data, df_shortcut):
+    with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
+        # Sheet 1：主表
+        df_data.to_excel(
+            writer,
+            sheet_name="data",
+            index=False
+        )
+
+        # Sheet 2：shortcut
+        df_shortcut.to_excel(
+            writer,
+            sheet_name="shortcut",
+            index=False
+        )
 
 
 def df2xml(path, df):
