@@ -10,6 +10,7 @@ import pickle as pkl
 from Picker import *
 from utilis import *
 from TCPclient import *
+from updater import *
 from lut import LUT, LUTShow, ArrayShow
 # NI SPI interface
 
@@ -1308,8 +1309,12 @@ class MainWindow(QtWidgets.QMainWindow):
         RawDataView.addAction(action_view2)
         RawDataView.addAction(action_view3)
         RawDataView.addAction(action_view4)
-        helpMenu = mainMenu.addMenu('Help')
 
+        helpMenu = mainMenu.addMenu('Help')
+        action_update = QtWidgets.QAction("Check Update", self)
+        action_update.setStatusTip("Standard SPI protocol")
+        action_update.triggered.connect(self.check_update)
+        helpMenu.addAction(action_update)
         #self.statusBar().showMessage("Ready")
 
         load_button = QtWidgets.QPushButton("Load")
@@ -1462,17 +1467,30 @@ class MainWindow(QtWidgets.QMainWindow):
         reset_button.setFixedSize(QtCore.QSize(75, 30))
         reset_button.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
         reset_button.clicked.connect(self.reset_spi)
+        ss_label = QtWidgets.QLabel("SS:")
+        ss_label.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
         self.resetInput = QtWidgets.QSpinBox()
         self.resetInput.setFixedWidth(40)
         self.resetInput.setMinimum(0)
         self.resetInput.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        self.caddr_label = QtWidgets.QLabel("CAddr:")
+        self.caddr_label.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        self.caddr_label.hide()
+        self.ca_resetInput = QtWidgets.QSpinBox()
+        self.ca_resetInput.setFixedWidth(40)
+        self.ca_resetInput.setMinimum(0)
+        self.ca_resetInput.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        self.ca_resetInput.hide()
 
         setupvbox = QtWidgets.QHBoxLayout()
         setupvbox.addLayout(clockhbox)
         setupvbox.addLayout(volhbox)
         setupvbox.addLayout(conhbox)
         setupvbox.addWidget(reset_button)
+        setupvbox.addWidget(ss_label)
         setupvbox.addWidget(self.resetInput)
+        setupvbox.addWidget(self.caddr_label)
+        setupvbox.addWidget(self.ca_resetInput)
         setupvbox.addStretch(1)
         setupvbox.addLayout(filehbox)
         setupbox = QtWidgets.QGroupBox("Setup")
@@ -1821,10 +1839,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def reset_spi(self):
         global Protocol
         if Protocol == "CA":
-            caddr = int(self.resetInput.value())
-            ni8452.spi_reset_new(0, caddr)
+            cs = int(self.resetInput.value())
+            caddr = int(self.ca_resetInput.value())
+            ni8452.spi_reset_new(cs, caddr)
             for _ in self.table.client.connections:
-                self.table.client.spi_reset_new(_, 0, caddr)
+                self.table.client.spi_reset_new(_, cs, caddr)
         else:
             cs = int(self.resetInput.value())
             ni8452.spi_reset(cs)
@@ -1931,11 +1950,43 @@ class MainWindow(QtWidgets.QMainWindow):
         asyncio.run(self.table.client.tcp_close(name))
 
     @QtCore.pyqtSlot()
+    def check_update(self):
+        if check_update():
+            msg = QtWidgets.QMessageBox()
+            msg.setWindowTitle("Update Available")
+            msg.setText("A new version is available.\nDo you want to update now?")
+            msg.setIcon(QtWidgets.QMessageBox.Information)
+            msg.setWindowIcon(QtGui.QIcon('tokyotech.ico'))
+            update_btn = msg.addButton("Update", QtWidgets.QMessageBox.AcceptRole)
+            cancel_btn = msg.addButton("Cancel", QtWidgets.QMessageBox.RejectRole)
+            msg.exec_()
+            if msg.clickedButton() == update_btn:
+                res = update_main()
+                if res:
+                    done_msg = QtWidgets.QMessageBox()
+                    done_msg.setWindowTitle("Update Complete")
+                    done_msg.setText("The update has been completed successfully.\nPlease restart the application.")
+                    done_msg.setIcon(QtWidgets.QMessageBox.Information)
+                    done_msg.setWindowIcon(QtGui.QIcon("app.ico"))
+                    done_msg.exec_()
+                else:
+                    fail_msg = QtWidgets.QMessageBox()
+                    fail_msg.setWindowTitle("Update Failed")
+                    fail_msg.setText("The update failed.\nPlease try again later.")
+                    fail_msg.setIcon(QtWidgets.QMessageBox.Critical)
+                    fail_msg.setWindowIcon(QtGui.QIcon("app.ico"))
+                    fail_msg.exec_()
+        else:
+            QtWidgets.QMessageBox.information(None, "Up to Date", "You are already using the latest version!")
+
+    @QtCore.pyqtSlot()
     def mode_toggle_classic(self):
         global Protocol
         Protocol = "Classic"
         self.classic_action.setChecked(True)
         self.cs_action.setChecked(False)
+        self.caddr_label.hide()
+        self.ca_resetInput.hide()
         self.table.setColumnHidden(self.table.col_dict["CAddr"], True)
         self.table.setColumnHidden(self.table.col_dict["Pos"], False)
         self.table.setColumnHidden(self.table.col_dict["RegSize"], False)
@@ -1948,6 +1999,8 @@ class MainWindow(QtWidgets.QMainWindow):
         Protocol = "CA"
         self.classic_action.setChecked(False)
         self.cs_action.setChecked(True)
+        self.caddr_label.show()
+        self.ca_resetInput.show()
         self.table.setColumnHidden(self.table.col_dict["CAddr"], False)
         self.table.setColumnHidden(self.table.col_dict["Pos"], True)
         self.table.setColumnHidden(self.table.col_dict["RegSize"], True)
@@ -2119,6 +2172,7 @@ if __name__ == '__main__':
     global main_window
     sys.excepthook = exception_hook
     app = QtWidgets.QApplication(sys.argv)
+    app.setWindowIcon(QtGui.QIcon('tokyotech.ico'))
     main_window = MainWindow()
     main_window.show()
     sys.exit(app.exec_())
