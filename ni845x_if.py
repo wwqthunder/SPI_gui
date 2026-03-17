@@ -223,7 +223,7 @@ class ni845x_if:
             ret = self.SpiWriteRead(cs, [((cmd << 5) + (add >> 3)) % 256, (add << 5) % 256, 0], 3)
             print("Addr:" + str(add) + "_Rd:" + str((ret[1] % 32) * 256 + ret[2] % 256))
             return (ret[1] % 32) * 256 + ret[2] % 256
-
+    
     def spi_write(self, cs, add, data, size):
         if size < 6:
             cmd = 6

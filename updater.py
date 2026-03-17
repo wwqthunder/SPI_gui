@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import json
 import urllib.request
 import importlib.util
@@ -9,6 +10,7 @@ import zipfile
 GITHUB_API = "https://api.github.com/repos/wwqthunder/SPI_gui/releases/latest"
 TEMP_DIR = "_update_temp"
 MAIN_DIR = "python-3.7.3"
+PIP_EXE = os.path.join(MAIN_DIR, "Scripts", "pip.exe")
 ZIP_PATH = "source.zip"
 
 
@@ -40,6 +42,37 @@ def local_version():
 
 def check_update():
     return parse_version(get_latest_version()) > parse_version(local_version())
+
+
+def parse_requirements():
+    pkgs = {}
+    path = "python-3.7.3/requirements.txt"
+    if not os.path.exists(path):
+        return pkgs
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            pkg_name = line.split("==")[0].split(">=")[0].split("<=")[0].split("!=")[0].strip()
+            pkgs[pkg_name.lower()] = line
+    return pkgs
+
+
+def get_installed_packages():
+    try:
+        result = subprocess.run(
+            [PIP_EXE, "list", "--format=freeze"],
+            capture_output=True, text=True
+        )
+        print(result)
+        pkgs = set()
+        for line in result.stdout.splitlines():
+            pkg = line.split("==")[0].strip().lower()
+            pkgs.add(pkg)
+        return pkgs
+    except Exception:
+        return set()
 
 
 def update_main():
@@ -94,4 +127,4 @@ def write_version(new_version):
 
 
 if __name__ == "__main__":
-    print(update_main())
+    print(get_installed_packages())
