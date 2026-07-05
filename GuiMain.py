@@ -202,13 +202,21 @@ class LoadTable(QtWidgets.QTableWidget):
         elif action == BackgroundColor_action:
             color = QtWidgets.QColorDialog.getColor()
             if color.isValid():
+                self.blockSignals(True)
                 for _ in self.selectedIndexes():
-                    self.item(_.row(), _.column()).setBackground(color)
+                    item = self.item(_.row(), _.column())
+                    if item is not None:  # Read/Write/+/- cells hold widgets, not items
+                        item.setBackground(color)
+                self.blockSignals(False)
         elif action == FontColor_action:
             color = QtWidgets.QColorDialog.getColor()
             if color.isValid():
+                self.blockSignals(True)
                 for _ in self.selectedIndexes():
-                    self.item(_.row(), _.column()).setForeground(color)
+                    item = self.item(_.row(), _.column())
+                    if item is not None:  # Read/Write/+/- cells hold widgets, not items
+                        item.setForeground(color)
+                self.blockSignals(False)
 
     def copy(self):
         selected_ranges = self.selectedRanges()
@@ -1048,15 +1056,18 @@ class ShortCutList(QtWidgets.QTableWidget):
             elif c is 2:
                 if self.ReadData[row] is None:
                     self.onLoading = False
+                    self.blockSignals(False)
                     return
                 if (text.count(".") > 1 and [-1, -1] in self.ReadData[row]) or (text.count(".") > 0 and [-1, -1] not in self.ReadData[row]):
                     self.item(r, c).setData(QtCore.Qt.EditRole, self.data.at[row, "Bin"])
                     self.onLoading = False
+                    self.blockSignals(False)
                     return
                 for _ in text:
                     if _ not in '.01':
                         self.item(r, c).setData(QtCore.Qt.EditRole, self.data.at[row, "Bin"])
                         self.onLoading = False
+                        self.blockSignals(False)
                         return
 
                 self.data.at[row, "Bin"] = text
@@ -1079,6 +1090,7 @@ class ShortCutList(QtWidgets.QTableWidget):
             elif c is 3:
                 if self.ReadData[row] is None:
                     self.onLoading = False
+                    self.blockSignals(False)
                     return
                 if float(text) < 0:
                     if [-1, -1] not in self.ReadData[row]:
@@ -1086,6 +1098,7 @@ class ShortCutList(QtWidgets.QTableWidget):
                     else:
                         self.item(r, c).setData(QtCore.Qt.EditRole, float(self.data.at[row, "Dec"]))
                     self.onLoading = False
+                    self.blockSignals(False)
                     return
 
                 if [-1, -1] not in self.ReadData[row]:
