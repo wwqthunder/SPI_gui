@@ -3,19 +3,17 @@ Self-updater for the deployed bundle (route B: portable Python).
 
 Runtime layout: the launcher (spi.bat) runs from the bundle root, and the
 interpreter + application source both live in MAIN_DIR ("python-3.7.3").
-Updating means: pull the latest source (.py / resources) from the GitHub
-branch HEAD, install any new/changed requirements with the bundled pip, then
-overwrite the files in MAIN_DIR -- and record the new revision.
 
-Safety guarantee (the whole point of this rewrite):
-  * Nothing in MAIN_DIR is touched until the download, extraction and pip
-    install have all succeeded, so a network/dependency failure changes nothing.
-  * The file swap is done with a per-file backup and rolled back on any error,
-    so a failure mid-copy restores the originals -- a failed update never bricks
-    the install.
+Update policy: RELEASE-GATED. The app only updates to the latest *published*
+GitHub Release (drafts and pre-releases are ignored), so plain pushes to the
+branch do not reach the lab machines -- you cut a Release when a build is
+blessed. Versions are compared semantically, so a machine is never downgraded.
+The installed release tag is recorded in MAIN_DIR/version.py.
 
-Revision model: we follow the branch HEAD commit sha (every push is picked up
-automatically); the installed sha is recorded in MAIN_DIR/version.py.
+Safety guarantee: nothing in MAIN_DIR is touched until the download, extraction
+and pip install have all succeeded; the file swap backs up every original and
+rolls back on any error (read-only bundle files are handled), so a failed
+update never bricks the install.
 """
 
 import os
@@ -28,57 +26,83 @@ import subprocess
 import urllib.request
 
 OWNER_REPO = "wwqthunder/SPI_gui"
-BRANCH = "master"
 API = "https://api.github.com/repos/" + OWNER_REPO
 MAIN_DIR = "python-3.7.3"                              # interpreter + app source
 PIP_EXE = os.path.join(MAIN_DIR, "Scripts", "pip.exe")
-REV_FILE = os.path.join(MAIN_DIR, "version.py")       # holds __revision__ = "<sha>"
+VER_FILE = os.path.join(MAIN_DIR, "version.py")       # holds __version__ = "<tag>"
 _HEADERS = {"User-Agent": "SPI-GUI-Updater", "Accept": "application/vnd.github+json"}
 _CHECK_TIMEOUT = 8                                    # small API call on startup
-_DOWNLOAD_TIMEOUT = 90                                # zipball can be a few MB
+_DOWNLOAD_TIMEOUT = 90                                # release zipball can be a few MB
 
 
 # --------------------------------------------------------------------------- #
-# revision bookkeeping
+# version bookkeeping
 # --------------------------------------------------------------------------- #
-def local_revision():
-    """Currently installed commit sha, or '' if unknown/first run."""
+def local_version():
+    """Installed release tag, or '' if unknown/first run."""
     try:
-        with open(REV_FILE, "r", encoding="utf-8") as f:
+        with open(VER_FILE, "r", encoding="utf-8") as f:
             for line in f:
-                if "__revision__" in line:
+                if "__version__" in line:
                     return line.split("=", 1)[1].strip().strip("\"'")
     except Exception:
         pass
     return ""
 
 
-def remote_revision():
-    """Latest commit sha on the tracked branch. Raises on network/API error."""
-    req = urllib.request.Request(API + "/commits/" + BRANCH, headers=_HEADERS)
+def latest_release():
+    """(tag_name, zipball_url) of the latest published release.
+    Raises on network / API error, or if the repo has no releases yet (404)."""
+    req = urllib.request.Request(API + "/releases/latest", headers=_HEADERS)
     with urllib.request.urlopen(req, timeout=_CHECK_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8"))["sha"]
+        data = json.loads(resp.read().decode("utf-8"))
+    return data["tag_name"], data["zipball_url"]
 
 
-def _write_revision(sha, folder):
+def remote_version():
+    return latest_release()[0]
+
+
+def _parse_version(tag):
+    """'v1.2', '1.2', '1.2.3-rc1' -> a tuple of leading integer parts."""
+    tag = tag.strip().lstrip("vV")
+    parts = []
+    for chunk in tag.replace("-", ".").split("."):
+        if chunk.isdigit():
+            parts.append(int(chunk))
+        else:
+            break
+    return tuple(parts)
+
+
+def _is_newer(remote, local):
+    """True iff release `remote` should replace installed `local` (never a
+    downgrade). Falls back to plain inequality only for unparseable tags."""
+    pr, pl = _parse_version(remote), _parse_version(local)
+    if pr and pl:
+        return pr > pl
+    return bool(remote) and remote != local
+
+
+def _write_version(tag, folder):
     with open(os.path.join(folder, "version.py"), "w", encoding="utf-8") as f:
-        f.write('__revision__ = "%s"\n' % sha)
+        f.write('__version__ = "%s"\n' % tag)
 
 
 def check_update():
-    """True iff GitHub HEAD differs from the installed revision.
+    """True iff a newer published Release exists than what is installed.
 
-    Never raises: any network / API / rate-limit problem is treated as
-    'no update available', so an offline startup is silent, not broken.
+    Never raises: any network / API / no-releases / rate-limit problem is
+    treated as 'no update', so an offline launch is silent, not broken.
     """
     try:
-        return remote_revision() != local_revision()
+        return _is_newer(remote_version(), local_version())
     except Exception:
         return False
 
 
 # --------------------------------------------------------------------------- #
-# the safe update
+# read-only-safe file ops
 # --------------------------------------------------------------------------- #
 def _force_write(path):
     """Clear the read-only bit so an existing file can be overwritten or removed
@@ -96,14 +120,17 @@ def _replace(src, dst):
     shutil.copy2(src, dst)
 
 
-def _download_zip(dest):
-    req = urllib.request.Request(API + "/zipball/" + BRANCH, headers=_HEADERS)
+# --------------------------------------------------------------------------- #
+# the safe update
+# --------------------------------------------------------------------------- #
+def _download_zip(url, dest):
+    req = urllib.request.Request(url, headers=_HEADERS)
     with urllib.request.urlopen(req, timeout=_DOWNLOAD_TIMEOUT) as resp, open(dest, "wb") as f:
         shutil.copyfileobj(resp, f)
 
 
 def _extracted_root(staging):
-    """Return the single top-level folder GitHub wraps the repo in."""
+    """Return the single top-level folder GitHub wraps the release source in."""
     subs = [d for d in os.listdir(staging) if os.path.isdir(os.path.join(staging, d))]
     return os.path.join(staging, subs[0]) if subs else staging
 
@@ -111,8 +138,8 @@ def _extracted_root(staging):
 def _pip_install(requirements_path):
     """Install/upgrade deps to satisfy requirements. True on success.
 
-    If there is no requirements file or no bundled pip, there is nothing to do
-    (returns True). Already-satisfied pins are skipped quickly by pip.
+    No requirements file or no bundled pip -> nothing to do (True). Already
+    satisfied pins are skipped quickly by pip.
     """
     if not os.path.exists(requirements_path) or not os.path.exists(PIP_EXE):
         return True
@@ -125,10 +152,10 @@ def _pip_install(requirements_path):
 
 
 def update_main():
-    """Pull the latest source into MAIN_DIR safely.
+    """Update MAIN_DIR to the latest published Release, safely.
 
     Returns True on success, False on any failure. On failure the original
-    MAIN_DIR files are guaranteed intact (either never touched, or rolled back).
+    MAIN_DIR files are guaranteed intact (never touched, or rolled back).
     """
     if not os.path.isdir(MAIN_DIR):
         return False
@@ -137,11 +164,11 @@ def update_main():
     staging = os.path.join(work, "staging")
     backup = os.path.join(work, "backup")
     try:
-        sha = remote_revision()
+        tag, zip_url = latest_release()
 
         # 1) download + extract into a staging area -- MAIN_DIR is not touched yet
         zip_path = os.path.join(work, "src.zip")
-        _download_zip(zip_path)
+        _download_zip(zip_url, zip_path)
         os.makedirs(staging, exist_ok=True)
         with zipfile.ZipFile(zip_path) as zf:
             zf.extractall(staging)
@@ -179,8 +206,8 @@ def update_main():
                     os.remove(d)
             return False
 
-        # 5) commit the new revision marker
-        _write_revision(sha, MAIN_DIR)
+        # 5) commit the new version marker
+        _write_version(tag, MAIN_DIR)
         return True
     except Exception:
         return False
@@ -189,9 +216,9 @@ def update_main():
 
 
 if __name__ == "__main__":
-    print("local :", local_revision() or "(none)")
+    print("installed:", local_version() or "(none)")
     try:
-        print("remote:", remote_revision())
+        print("latest release:", remote_version())
     except Exception as e:
-        print("remote: <error>", e)
+        print("latest release: <none/error>", e)
     print("update available:", check_update())
