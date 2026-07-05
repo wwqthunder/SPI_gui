@@ -135,7 +135,7 @@ class Picker(QtWidgets.QWidget):
     @QtCore.pyqtSlot(int,int)
     def handleBitButtonClicked(self, nitem, nbit):
         if [nitem,nbit] not in self.itemBasket:
-            if nitem is -1 and nbit is -1:
+            if nitem == -1 and nbit == -1:
                 bit = QtWidgets.QPushButton(".")
                 self.buttonPoint.setStyleSheet(
                     "background-color:qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,stop: 0 #dadbde, stop: 1 #f6f7fa);"
@@ -159,7 +159,7 @@ class Picker(QtWidgets.QWidget):
             self.itemRes.addWidget(bit,alignment=QtCore.Qt.AlignLeft)
             self.resButton.append(bit)
         else:
-            if nitem is -1 and nbit is -1:
+            if nitem == -1 and nbit == -1:
                 self.buttonPoint.setStyleSheet("")
             else:
                 self.itemButton[nitem][nbit].setStyleSheet("")
@@ -240,7 +240,7 @@ class Picker(QtWidgets.QWidget):
 
 
     def backspace(self):
-        if len(self.itemBasket) is not 0:
+        if len(self.itemBasket) != 0:
             _ = self.itemBasket[-1]
             self.handleBitButtonClicked(_[0], _[1])
 

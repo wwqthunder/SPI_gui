@@ -375,7 +375,7 @@ class LoadTable(QtWidgets.QTableWidget):
             else:
                 _size = self.data.at[r, "Size"]
             if c == self.col_dict["DecW"] and str(_size).isdigit():
-                if int(_size) is not 0:
+                if int(_size) != 0:
                     _dec = int(text)
                     self.setbin(r, _dec, _size)
                     _vol = self.dec2voltage(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], _dec, _size)
@@ -387,7 +387,7 @@ class LoadTable(QtWidgets.QTableWidget):
                 self.data.at[r, "DecW"] = _dec
                 self.setTable(r, self.col_dict["DecW"], _dec)
                 if str(_size).isdigit():
-                    if int(_size) is not 0:
+                    if int(_size) != 0:
                         self.setbin(r, _dec, _size)
                 _vol = self.dec2voltage(self.data.at[r, "VolMax"], self.data.at[r, "VolMin"], _dec, _size)
                 if _vol is not None:
@@ -663,9 +663,9 @@ class LoadTable(QtWidgets.QTableWidget):
 
     @QtCore.pyqtSlot()
     def addrow(self):
-        if len(self.selectedIndexes()) is 0:
+        if len(self.selectedIndexes()) == 0:
             rowcount = self.rowCount()
-            if rowcount is 0:
+            if rowcount == 0:
                 newRowSeries = pd.Series([None for _ in range(len(self.data_headers))], index=self.data_headers)
                 for _ in self.data_headers:
                     if _ in ["SS", "CAddr", "Addr", "Pos"]:
@@ -849,7 +849,7 @@ class LoadTable(QtWidgets.QTableWidget):
             sel = int(self.data.at[r, "Pos"])
             size = int(self.data.at[r, "RegSize"])
             nBits = int(self.data.at[r, "Size"])
-            if sel is not 0:
+            if sel != 0:
                 if len(term) > 0:
                     res = self.client.spi_read(term, cs, addr, size)
                 else:
@@ -1014,9 +1014,9 @@ class ShortCutList(QtWidgets.QTableWidget):
             self.onLoading = True
             row = r - 1
             text = self.item(r, c).text()
-            if c is 0:
+            if c == 0:
                 self.data.at[row, "Name"] = text
-            elif c is 1:
+            elif c == 1:
                 _text = text.replace(" ", "")
                 _temp = QtWidgets.QTableWidgetItem()
                 _temp.setData(QtCore.Qt.EditRole, _text)
@@ -1053,7 +1053,7 @@ class ShortCutList(QtWidgets.QTableWidget):
                 self.button_read[r].setEnabled(self.button_read_en[r])
                 self.button_write[r].setEnabled(self.button_write_en[r])
 
-            elif c is 2:
+            elif c == 2:
                 if self.ReadData[row] is None:
                     self.onLoading = False
                     self.blockSignals(False)
@@ -1080,14 +1080,14 @@ class ShortCutList(QtWidgets.QTableWidget):
                     _bin = format(int(_dec), _format)
                 else:
                     _index = self.ReadData[row].index([-1, -1])
-                    if _index is 0:
+                    if _index == 0:
                         nint = 1
                     else:
                         nint = _index
                     _bin = Float2FixPointBin(_dec, nint, self.data.at[row, "Length"] - _index - 1)
                 self.data.at[row, "Bin"] = _bin
                 self.item(r, 2).setData(QtCore.Qt.EditRole, _bin)
-            elif c is 3:
+            elif c == 3:
                 if self.ReadData[row] is None:
                     self.onLoading = False
                     self.blockSignals(False)
@@ -1116,7 +1116,7 @@ class ShortCutList(QtWidgets.QTableWidget):
                     _bin = format(int(text), _format)
                 else:
                     _index = self.ReadData[row].index([-1, -1])
-                    if _index is 0:
+                    if _index == 0:
                         nint = 1
                     else:
                         nint = _index
@@ -1624,7 +1624,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     def EditCaller(self):
-        if len(self.list.selectedIndexes()) is 0:
+        if len(self.list.selectedIndexes()) == 0:
             return
         if self.picker is not None:
             self.picker.close()
@@ -1664,13 +1664,13 @@ class MainWindow(QtWidgets.QMainWindow):
         name = self.picker.nameInput.text()
         self.picker.close()
         self.picker = None
-        if len(itemBasket) is not 0:
+        if len(itemBasket) != 0:
             self.list.onLoading = True
             readlist = []
             data = []
             range = ""
             for _ in itemBasket:
-                if _[0] is -1: # floating point .
+                if _[0] == -1: # floating point .
                     if _ is not itemBasket[-1]:
                         data.append([-1, -1])
                         range = range[:-1] + "."
@@ -1726,7 +1726,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 _temp.setData(QtCore.Qt.EditRole, float(0.0))
                 self.list.setItem(rowcount, 3, _temp)
                 _index = data.index([-1, -1])
-                if _index is 0:
+                if _index == 0:
                     _format = "01b"
                 else:
                     _format = "0" + str(len(data[:_index])) + "b"
@@ -1768,7 +1768,7 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot(bool, int)
     def handleBackbone(self, ReadWriteFlag, row):  # Shortcut list control
         print(row)
-        if row is 0:
+        if row == 0:
             if ReadWriteFlag is True:
                 for _ in range(len(self.table.button_read_en)):
                     if self.table.button_read[_].isEnabled():
@@ -1804,7 +1804,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.table.handleReadClicked(r)
                     dictRead[r] = str(self.table.data.at[r, "BinR"])
                 for _ in self.list.ReadData[row]:
-                    if _[0] is not -1:
+                    if _[0] != -1:
                         if len(_) == 2:
                             _bin = _bin + dictRead[_[0]-1][::-1][_[1]]  # [::-1] string flip
                         elif len(_) == 3:
@@ -1834,7 +1834,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     dictWrite[r] = str(self.table.data.at[r, "BinR"])
 
                 for _ in self.list.ReadData[row]:
-                    if _[0] is not -1:
+                    if _[0] != -1:
                         _index = _[0] - 1
                         string_list = list(dictWrite[_index][::-1])
                         if len(_) == 2: # 1 bit
@@ -1880,7 +1880,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # SPI config
 
             resource_name = ni8452.ni845xFindDevice()
-            if ni8452.status_code is 0:
+            if ni8452.status_code == 0:
                 ret = ni8452.ni845xOpen(resource_name)
                 print(ret)
                 ni8452.ni845xSetIoVoltageLevel(int(float(self.combox_vol.currentText())*10))
