@@ -1092,6 +1092,15 @@ class ShortCutList(QtWidgets.QTableWidget):
                     self.onLoading = False
                     self.blockSignals(False)
                     return
+                try:  # Reject non-numeric (or non-integer in integer mode) input instead of crashing
+                    float(text)
+                    if [-1, -1] not in self.ReadData[row]:
+                        int(text)
+                except ValueError:
+                    self.item(r, c).setData(QtCore.Qt.EditRole, self.data.at[row, "Dec"])
+                    self.onLoading = False
+                    self.blockSignals(False)
+                    return
                 if float(text) < 0:
                     if [-1, -1] not in self.ReadData[row]:
                         self.item(r, c).setData(QtCore.Qt.EditRole, int(self.data.at[row, "Dec"]))
