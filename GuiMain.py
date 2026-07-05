@@ -639,11 +639,11 @@ class LoadTable(QtWidgets.QTableWidget):
                         self.setTable(index, self.col_dict["VolW"], _vol, "F")
 
             button_read = QtWidgets.QPushButton('Read')
-            button_read.clicked.connect(lambda *args, rowcount=index: self.handleReadClicked(rowcount))
+            button_read.clicked.connect(self._read_clicked)
             self.button_read.append(button_read)
             self.button_read_en.append(False)
             button_write = QtWidgets.QPushButton('Write')
-            button_write.clicked.connect(lambda *args, rowcount=index: self.handleWriteClicked(rowcount))
+            button_write.clicked.connect(self._write_clicked)
             self.button_write.append(button_write)
             self.button_write_en.append(False)
             self.setCellWidget(index, self.col_dict["Read"], button_read)
@@ -651,12 +651,12 @@ class LoadTable(QtWidgets.QTableWidget):
             self.button_enable_set(index)
 
             button_minus = QtWidgets.QPushButton('-')
-            button_minus.clicked.connect(lambda *args, rowcount=index: self.handleMinusClicked(rowcount))
+            button_minus.clicked.connect(self._minus_clicked)
             self.button_minus.append(button_minus)
             self.setCellWidget(index, self.col_dict["-"], button_minus)
 
             button_plus = QtWidgets.QPushButton('+')
-            button_plus.clicked.connect(lambda *args, rowcount=index: self.handlePlusClicked(rowcount))
+            button_plus.clicked.connect(self._plus_clicked)
             self.button_plus.append(button_plus)
             self.setCellWidget(index, self.col_dict["+"], button_plus)
         self.onLoading = False
@@ -697,38 +697,28 @@ class LoadTable(QtWidgets.QTableWidget):
         self.data.reset_index(drop=True, inplace=True)
 
         button_read = QtWidgets.QPushButton('Read')
-        button_read.clicked.connect(lambda *args, rowcount=rowcount: self.handleReadClicked(rowcount))
+        button_read.clicked.connect(self._read_clicked)
         button_read.setEnabled(False)
         self.button_read.insert(rowcount, button_read)
         self.button_read_en.insert(rowcount, False)
         self.setCellWidget(rowcount, self.col_dict["Read"], button_read)
 
         button_write = QtWidgets.QPushButton('Write')
-        button_write.clicked.connect(lambda *args, rowcount=rowcount: self.handleWriteClicked(rowcount))
+        button_write.clicked.connect(self._write_clicked)
         button_write.setEnabled(False)
         self.button_write.insert(rowcount, button_write)
         self.button_write_en.insert(rowcount, False)
         self.setCellWidget(rowcount, self.col_dict["Write"], button_write)
 
         button_minus = QtWidgets.QPushButton('-')
-        button_minus.clicked.connect(lambda *args, rowcount=rowcount: self.handleMinusClicked(rowcount))
+        button_minus.clicked.connect(self._minus_clicked)
         self.button_minus.insert(rowcount, button_minus)
         self.setCellWidget(rowcount, self.col_dict["-"], button_minus)
 
         button_plus = QtWidgets.QPushButton('+')
-        button_plus.clicked.connect(lambda *args, rowcount=rowcount: self.handlePlusClicked(rowcount))
+        button_plus.clicked.connect(self._plus_clicked)
         self.button_plus.insert(rowcount, button_plus)
         self.setCellWidget(rowcount, self.col_dict["+"], button_plus)
-        if rowcount < self.rowCount():
-            for _ in range(len(self.button_write)):
-                self.button_write[_].clicked.disconnect()
-                self.button_write[_].clicked.connect(lambda *args, _row=_: self.handleWriteClicked(_row))
-                self.button_read[_].clicked.disconnect()
-                self.button_read[_].clicked.connect(lambda *args, _row=_: self.handleReadClicked(_row))
-                self.button_minus[_].clicked.disconnect()
-                self.button_minus[_].clicked.connect(lambda *args, _row=_: self.handleMinusClicked(_row))
-                self.button_plus[_].clicked.disconnect()
-                self.button_plus[_].clicked.connect(lambda *args, _row=_: self.handlePlusClicked(_row))
 
         self.onLoading = True
         for _ in self.cols_headers:
@@ -760,18 +750,25 @@ class LoadTable(QtWidgets.QTableWidget):
 
             self.data = self.data.drop(index=rows)
             self.data.reset_index(drop=True, inplace=True)
-            rows = sorted(rows)
 
-            if rows[0] < len(self.button_read):
-                for _ in range(rows[0], len(self.button_read)):
-                    self.button_write[_].clicked.disconnect()
-                    self.button_write[_].clicked.connect(lambda *args, rowcount=_: self.handleWriteClicked(rowcount))
-                    self.button_read[_].clicked.disconnect()
-                    self.button_read[_].clicked.connect(lambda *args, rowcount=_: self.handleReadClicked(rowcount))
-                    self.button_minus[_].clicked.disconnect()
-                    self.button_minus[_].clicked.connect(lambda *args, rowcount=_: self.handleMinusClicked(rowcount))
-                    self.button_plus[_].clicked.disconnect()
-                    self.button_plus[_].clicked.connect(lambda *args, rowcount=_: self.handlePlusClicked(rowcount))
+    # Resolve the row from the emitting button at click time, so button rows
+    # never need re-wiring when rows are inserted/removed. self.sender() is the
+    # clicked button; its index in the parallel list is its current row.
+    @QtCore.pyqtSlot()
+    def _read_clicked(self):
+        self.handleReadClicked(self.button_read.index(self.sender()))
+
+    @QtCore.pyqtSlot()
+    def _write_clicked(self):
+        self.handleWriteClicked(self.button_write.index(self.sender()))
+
+    @QtCore.pyqtSlot()
+    def _minus_clicked(self):
+        self.handleMinusClicked(self.button_minus.index(self.sender()))
+
+    @QtCore.pyqtSlot()
+    def _plus_clicked(self):
+        self.handlePlusClicked(self.button_plus.index(self.sender()))
 
     @QtCore.pyqtSlot(int)
     def handleReadClicked(self, r):
@@ -996,8 +993,8 @@ class ShortCutList(QtWidgets.QTableWidget):
         button_write = QtWidgets.QPushButton('Write')
         button_read.setEnabled(True)
         button_write.setEnabled(True)
-        button_read.clicked.connect(lambda *args, rowcount=0: self.handleReadRunClicked(rowcount))
-        button_write.clicked.connect(lambda *args, rowcount=0: self.handleWriteRunClicked(rowcount))
+        button_read.clicked.connect(self._read_run_clicked)
+        button_write.clicked.connect(self._write_run_clicked)
         self.button_read.append(button_read)
         self.button_write.append(button_write)
         self.button_read_en.append(True)
@@ -1158,8 +1155,8 @@ class ShortCutList(QtWidgets.QTableWidget):
             button_write = QtWidgets.QPushButton('Write')
             button_read.setEnabled(True)
             button_write.setEnabled(True)
-            button_read.clicked.connect(lambda *args, rowcount=_index+1: self.handleReadRunClicked(rowcount))
-            button_write.clicked.connect(lambda *args, rowcount=_index+1: self.handleWriteRunClicked(rowcount))
+            button_read.clicked.connect(self._read_run_clicked)
+            button_write.clicked.connect(self._write_run_clicked)
             self.button_read.append(button_read)
             self.button_write.append(button_write)
             self.button_read_en.append(True)
@@ -1181,8 +1178,8 @@ class ShortCutList(QtWidgets.QTableWidget):
         button_write = QtWidgets.QPushButton('Write')
         button_read.setEnabled(False)
         button_write.setEnabled(False)
-        button_read.clicked.connect(lambda *args, rowcount=rowcount:self.handleReadRunClicked(rowcount))
-        button_write.clicked.connect(lambda *args, rowcount=rowcount: self.handleWriteRunClicked(rowcount))
+        button_read.clicked.connect(self._read_run_clicked)
+        button_write.clicked.connect(self._write_run_clicked)
         self.button_read.append(button_read)
         self.button_write.append(button_write)
         self.button_read_en.append(False)
@@ -1215,14 +1212,6 @@ class ShortCutList(QtWidgets.QTableWidget):
             self.data = self.data.drop(index=rows)
             self.data.reset_index(drop=True, inplace=True)
 
-            rows = sorted(rows)
-            if rows[0]+1 < len(self.button_read):
-                for _ in range(rows[0]+1, len(self.button_read)):
-                    self.button_write[_].clicked.disconnect()
-                    self.button_write[_].clicked.connect(lambda *args, rowcount=_: self.handleWriteRunClicked(rowcount))
-                    self.button_read[_].clicked.disconnect()
-                    self.button_read[_].clicked.connect(lambda *args, rowcount=_: self.handleReadRunClicked(rowcount))
-
 
     @QtCore.pyqtSlot(int)
     def handleReadRunClicked(self, r):
@@ -1231,6 +1220,16 @@ class ShortCutList(QtWidgets.QTableWidget):
     @QtCore.pyqtSlot(int)
     def handleWriteRunClicked(self, r):
         self.Tx.emit(False, r)
+
+    # Resolve the row from the emitting button at click time (see LoadTable),
+    # so button rows never need re-wiring on insert/remove.
+    @QtCore.pyqtSlot()
+    def _read_run_clicked(self):
+        self.handleReadRunClicked(self.button_read.index(self.sender()))
+
+    @QtCore.pyqtSlot()
+    def _write_run_clicked(self):
+        self.handleWriteRunClicked(self.button_write.index(self.sender()))
 
     def button_update(self):
         for _ in range(len(self.button_read)):
@@ -1696,8 +1695,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 button_write = QtWidgets.QPushButton('Write')
                 button_read.setEnabled(SPIConnFlag)
                 button_write.setEnabled(SPIConnFlag)
-                button_read.clicked.connect(lambda *args, rowcount=rowcount: self.list.handleReadRunClicked(rowcount))
-                button_write.clicked.connect(lambda *args, rowcount=rowcount: self.list.handleWriteRunClicked(rowcount))
+                button_read.clicked.connect(self.list._read_run_clicked)
+                button_write.clicked.connect(self.list._write_run_clicked)
                 self.list.button_read.append(button_read)
                 self.list.button_write.append(button_write)
                 self.list.button_read_en.append(True)
