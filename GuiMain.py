@@ -1583,6 +1583,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowIcon(QtGui.QIcon('tokyotech.ico'))
         self.showMaximized()
 
+        # Check GitHub for a newer revision on every launch (silent when already
+        # current or offline; only prompts when an update is actually available).
+        QtCore.QTimer.singleShot(1500, self.check_update_on_startup)
+
         if os.path.exists("config.spi") is True:
             try:
                 f = open('config.spi', 'rb')
@@ -1972,6 +1976,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     def check_update(self):
+        # Help-menu action: report the result either way.
+        self._update_flow(silent=False)
+
+    def check_update_on_startup(self):
+        # Launch-time check: stay quiet unless an update is actually available.
+        self._update_flow(silent=True)
+
+    def _update_flow(self, silent=False):
         if check_update():
             msg = QtWidgets.QMessageBox()
             msg.setWindowTitle("Update Available")
@@ -1988,16 +2000,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     done_msg.setWindowTitle("Update Complete")
                     done_msg.setText("The update has been completed successfully.\nPlease restart the application.")
                     done_msg.setIcon(QtWidgets.QMessageBox.Information)
-                    done_msg.setWindowIcon(QtGui.QIcon("app.ico"))
+                    done_msg.setWindowIcon(QtGui.QIcon("tokyotech.ico"))
                     done_msg.exec_()
                 else:
                     fail_msg = QtWidgets.QMessageBox()
                     fail_msg.setWindowTitle("Update Failed")
-                    fail_msg.setText("The update failed.\nPlease try again later.")
+                    fail_msg.setText("The update failed. Your current version is unchanged.\nPlease try again later.")
                     fail_msg.setIcon(QtWidgets.QMessageBox.Critical)
-                    fail_msg.setWindowIcon(QtGui.QIcon("app.ico"))
+                    fail_msg.setWindowIcon(QtGui.QIcon("tokyotech.ico"))
                     fail_msg.exec_()
-        else:
+        elif not silent:
             QtWidgets.QMessageBox.information(None, "Up to Date", "You are already using the latest version!")
 
     @QtCore.pyqtSlot()
