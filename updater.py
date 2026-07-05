@@ -19,6 +19,7 @@ automatically); the installed sha is recorded in MAIN_DIR/version.py.
 """
 
 import os
+import stat
 import json
 import shutil
 import zipfile
@@ -79,6 +80,22 @@ def check_update():
 # --------------------------------------------------------------------------- #
 # the safe update
 # --------------------------------------------------------------------------- #
+def _force_write(path):
+    """Clear the read-only bit so an existing file can be overwritten or removed
+    (bundle files are often shipped read-only, which otherwise blocks the swap)."""
+    if os.path.exists(path):
+        try:
+            os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+        except OSError:
+            pass
+
+
+def _replace(src, dst):
+    """Copy src onto dst, overwriting even a read-only destination."""
+    _force_write(dst)
+    shutil.copy2(src, dst)
+
+
 def _download_zip(dest):
     req = urllib.request.Request(API + "/zipball/" + BRANCH, headers=_HEADERS)
     with urllib.request.urlopen(req, timeout=_DOWNLOAD_TIMEOUT) as resp, open(dest, "wb") as f:
@@ -101,7 +118,7 @@ def _pip_install(requirements_path):
         return True
     try:
         subprocess.run([PIP_EXE, "install", "-r", requirements_path],
-                       check=True, capture_output=True, text=True)
+                       check=True, capture_output=True, text=True, errors="replace")
         return True
     except Exception:
         return False
@@ -150,14 +167,15 @@ def update_main():
                     shutil.copy2(d, os.path.join(backup, name))   # save original first
                 else:
                     new_names.append(name)
-                shutil.copy2(s, d)                    # overwrite (may fail here)
+                _replace(s, d)                        # overwrite (read-only safe)
         except Exception:
             # 4) rollback: restore every backed-up original, remove every new file
             for name in os.listdir(backup):
-                shutil.copy2(os.path.join(backup, name), os.path.join(MAIN_DIR, name))
+                _replace(os.path.join(backup, name), os.path.join(MAIN_DIR, name))
             for name in new_names:
                 d = os.path.join(MAIN_DIR, name)
                 if os.path.exists(d):
+                    _force_write(d)
                     os.remove(d)
             return False
 
