@@ -1,4 +1,44 @@
+# ===================== App runtime state =====================
+# Pickled GUI state (per-machine), and version file written by updater.py
 config.spi
+version.py
 
-__pycache__
-*.pyc
+# ===================== Python =====================
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+
+# ============ Bundled runtime (route B: portable Python) ============
+# Shipped interpreter is rewritten by the auto-updater; never commit it.
+python-3.7.3/
+venv/
+env/
+.venv/
+
+# ===================== PyInstaller build output =====================
+build/
+dist/
+*.manifest
+
+# ===================== Auto-updater temp / artifacts =====================
+_update_temp/
+source.zip
+
+# ===================== JetBrains PyCharm =====================
+# Shareable project files (*.iml, misc.xml, modules.xml, vcs.xml,
+# inspectionProfiles/) stay trackable; only user-specific state is ignored.
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+.idea/dictionaries/
+
+# ===================== VS Code / Visual Studio =====================
+.vscode/
+.vs/
+
+# ===================== OS junk =====================
+Thumbs.db
+Desktop.ini
+.DS_Store
