@@ -281,8 +281,12 @@ class ni845x_if:
         rbuf = (c.c_uint8*ReadBytes)(*list())
 
         status = self.i2c.ni845xSpiConfigurationSetChipSelect(self.spi_handle, cs)
+        self._check(status, "Chip select")
         status = self.i2c.ni845xSpiWriteRead(self.device_handle, self.spi_handle, wsize,
                                              c.byref(wbuf), c.byref(rsize), c.byref(rbuf))
+        # On error the transfer did not happen and rbuf still holds zeros --
+        # returning it would show fake register values in the table.
+        self._check(status, "SPI transfer")
 
         read_data = [rbuf[i] for i in range(ReadBytes)]
         return read_data

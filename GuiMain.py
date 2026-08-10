@@ -754,21 +754,29 @@ class LoadTable(QtWidgets.QTableWidget):
     # Resolve the row from the emitting button at click time, so button rows
     # never need re-wiring when rows are inserted/removed. self.sender() is the
     # clicked button; its index in the parallel list is its current row.
+    def _guarded(self, handler, row):
+        """Run one transfer and report an SPI failure in a dialog, so a lost
+        connection cannot pass unnoticed and cannot kill the application."""
+        try:
+            handler(row)
+        except ni.Ni845xError as e:
+            QtWidgets.QMessageBox.critical(self, "SPI Error", str(e))
+
     @QtCore.pyqtSlot()
     def _read_clicked(self):
-        self.handleReadClicked(self.button_read.index(self.sender()))
+        self._guarded(self.handleReadClicked, self.button_read.index(self.sender()))
 
     @QtCore.pyqtSlot()
     def _write_clicked(self):
-        self.handleWriteClicked(self.button_write.index(self.sender()))
+        self._guarded(self.handleWriteClicked, self.button_write.index(self.sender()))
 
     @QtCore.pyqtSlot()
     def _minus_clicked(self):
-        self.handleMinusClicked(self.button_minus.index(self.sender()))
+        self._guarded(self.handleMinusClicked, self.button_minus.index(self.sender()))
 
     @QtCore.pyqtSlot()
     def _plus_clicked(self):
-        self.handlePlusClicked(self.button_plus.index(self.sender()))
+        self._guarded(self.handlePlusClicked, self.button_plus.index(self.sender()))
 
     @QtCore.pyqtSlot(int)
     def handleReadClicked(self, r):
@@ -1770,6 +1778,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot(bool, int)
     def handleBackbone(self, ReadWriteFlag, row):  # Shortcut list control
+        # Stop the batch at the first SPI failure and report it once, rather
+        # than raising one dialog per remaining row.
+        try:
+            self._backbone_run(ReadWriteFlag, row)
+        except ni.Ni845xError as e:
+            QtWidgets.QMessageBox.critical(self, "SPI Error", str(e))
+
+    def _backbone_run(self, ReadWriteFlag, row):
         print(row)
         if row == 0:
             if ReadWriteFlag is True:
@@ -1862,6 +1878,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     def reset_spi(self):
+        try:
+            self._reset_spi_run()
+        except ni.Ni845xError as e:
+            QtWidgets.QMessageBox.critical(self, "SPI Error", str(e))
+
+    def _reset_spi_run(self):
         global Protocol
         if Protocol == "CA":
             cs = int(self.resetInput.value())
