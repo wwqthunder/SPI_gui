@@ -5,6 +5,18 @@ import sys
 DEV_SIZE = 256
 MAX_SIZE = 1024
 
+
+class Ni845xError(Exception):
+    """An NI-845x call returned an error status.
+
+    NI status convention: 0 = success, < 0 = error (the operation did NOT
+    happen, so any read buffer holds garbage), > 0 = warning (completed).
+    """
+    def __init__(self, status, message):
+        super(Ni845xError, self).__init__(message)
+        self.status = status
+
+
 class ni845x_if:
     """
     This class makes Python calls to the C DLL of NI USB 8452 (ni845x.dll)
@@ -27,6 +39,66 @@ class ni845x_if:
         except Exception as e:
             print(e)
             self.dll_flag = False
+        if self.dll_flag:
+            self._setup_prototypes()
+
+    def _setup_prototypes(self):
+        """Declare argument/return types taken from ni845x.h.
+
+        Without these, ctypes marshals arguments by guesswork -- a bare Python
+        int handle would be passed as a 32-bit C int and silently truncated on
+        64-bit. Declaring them makes a wrong call raise instead of corrupting
+        the transfer.
+        """
+        NiHandle = c.c_uint64 if self.flag64 else c.c_uint32
+        hp = c.POINTER(NiHandle)
+        u8p = c.POINTER(c.c_uint8)
+        u32p = c.POINTER(c.c_uint32)
+        i32 = c.c_int32
+        protos = {
+            "ni845xFindDevice": ([c.c_char_p, hp, u32p], i32),
+            "ni845xCloseFindDeviceHandle": ([NiHandle], i32),
+            "ni845xOpen": ([c.c_char_p, hp], i32),
+            "ni845xClose": ([NiHandle], i32),
+            "ni845xStatusToString": ([i32, c.c_uint32, c.c_char_p], None),
+            "ni845xSetIoVoltageLevel": ([NiHandle, c.c_uint8], i32),
+            "ni845xSpiConfigurationOpen": ([hp], i32),
+            "ni845xSpiConfigurationClose": ([NiHandle], i32),
+            "ni845xSpiConfigurationSetChipSelect": ([NiHandle, c.c_uint32], i32),
+            "ni845xSpiConfigurationSetClockRate": ([NiHandle, c.c_uint16], i32),
+            "ni845xSpiConfigurationSetClockPolarity": ([NiHandle, i32], i32),
+            "ni845xSpiConfigurationSetClockPhase": ([NiHandle, i32], i32),
+            "ni845xSpiConfigurationSetNumBitsPerSample": ([NiHandle, c.c_uint16], i32),
+            "ni845xSpiWriteRead": ([NiHandle, NiHandle, c.c_uint32, u8p, u32p, u8p], i32),
+            "ni845xDioSetPortLineDirectionMap": ([NiHandle, c.c_uint8, c.c_uint8], i32),
+            "ni845xDioSetDriverType": ([NiHandle, c.c_uint8, c.c_uint8], i32),
+            "ni845xDioWritePort": ([NiHandle, c.c_uint8, c.c_uint8], i32),
+        }
+        for name, (argtypes, restype) in protos.items():
+            try:
+                fn = getattr(self.i2c, name)
+            except AttributeError:
+                continue                          # not present in this driver version
+            fn.argtypes = argtypes
+            fn.restype = restype
+
+    def _status_message(self, status_code):
+        """Short driver-supplied description for a status code."""
+        buf = c.create_string_buffer(MAX_SIZE)
+        self.i2c.ni845xStatusToString(status_code, MAX_SIZE, buf)
+        text = buf.value.decode("latin-1", "replace").strip()
+        text = text.split("NI-845x:")[-1].strip()
+        stop = text.find(". ")                    # drop the long "refer to your documentation" tail
+        if stop != -1:
+            text = text[:stop + 1]
+        return text
+
+    def _check(self, status_code, operation):
+        """Raise Ni845xError on an error status. Warnings (> 0) are ignored:
+        the operation completed, so the data is valid."""
+        if status_code < 0:
+            raise Ni845xError(status_code, "%s failed (%d): %s"
+                              % (operation, status_code, self._status_message(status_code)))
 
     def ni845xFindDevice(self):
         """
@@ -41,7 +113,9 @@ class ni845x_if:
             self.find_device_handle = c.c_uint32(0)
         number_found = c.c_uint32(0)
 
-        self.status_code = self.i2c.ni845xFindDevice(c.byref(self.first_device), c.byref(self.find_device_handle), c.byref(number_found))
+        # Pass the buffer itself, not byref(): a char array already marshals as
+        # the char* the API expects, and that is what the declared argtype takes.
+        self.status_code = self.i2c.ni845xFindDevice(self.first_device, c.byref(self.find_device_handle), c.byref(number_found))
         print("returnValue ni845xFindDevice", self.status_code)
         print("First DeviceName:\n", str(self.first_device.value))
         #print("Number Found: ", number_found[0])
@@ -60,7 +134,7 @@ class ni845x_if:
         else:
             self.device_handle = c.c_uint32(0)
 
-        returnValue = self.i2c.ni845xOpen(c.byref(self.first_device), c.byref(self.device_handle))
+        returnValue = self.i2c.ni845xOpen(self.first_device, c.byref(self.device_handle))
         print("self.device_handle", hex((self.device_handle.value)))
         print("Return values of ni845xOpen: ", hex(returnValue))
         #print("Return values of ni845xOpen: ", returnValue)
@@ -206,8 +280,9 @@ class ni845x_if:
         rsize = c.c_uint32(ReadBytes)
         rbuf = (c.c_uint8*ReadBytes)(*list())
 
-        ret = self.i2c.ni845xSpiConfigurationSetChipSelect(self.spi_handle, cs)
-        ret = self.i2c.ni845xSpiWriteRead(self.device_handle, self.spi_handle, wsize, c.byref(wbuf), c.byref(rsize), c.byref(rbuf))
+        status = self.i2c.ni845xSpiConfigurationSetChipSelect(self.spi_handle, cs)
+        status = self.i2c.ni845xSpiWriteRead(self.device_handle, self.spi_handle, wsize,
+                                             c.byref(wbuf), c.byref(rsize), c.byref(rbuf))
 
         read_data = [rbuf[i] for i in range(ReadBytes)]
         return read_data
