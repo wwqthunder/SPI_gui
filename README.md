@@ -62,6 +62,38 @@ According to your code editor, please refer to:
 * Visual Studio Code: https://code.visualstudio.com/docs/python/python-tutorial
 * Spyder: https://www.jcchouinard.com/python-with-spyder-ide/
 
+## SPI Control (register array, preview)
+
+`SpiControl.py` is a new GUI next to `GuiMain.py` (which is unchanged). Instead of a table it draws
+every register as a tile: click a bit to flip it, click the value to type one (decimal, `0x…`, `0b…`).
+
+```bash
+python SpiControl.py [profile.json | old table .csv/.xlsx/.xlsm]
+```
+
+* **Profile** — the only chip-specific input: protocol, chips (link + chip select, plus chip address
+  for CA), register addresses and widths, optional field names. Old tables open directly
+  (File ▸ Open) and can be saved as a profile (File ▸ Save profile as…).
+* **Watches** replace the ShortCutList and the Picker: buses are found from field names such as
+  `FLL_KP<0>`; others are picked by clicking bits on the tiles (with an optional binary point).
+* **Links** — NI USB-8452, Raspberry Pi Pico W boards (Discover), each chip routed to one link.
+  *Links ▸ Simulate hardware* runs everything against in-memory chips.
+* Edits stay unsent until *Write*; *Auto-write* sends each change at once.
+
+A minimal profile:
+
+```json
+{"name": "New chip", "protocol": "classic",
+ "chips": [{"label": "SS0", "link": "ni", "ss": 0}, {"label": "SS1", "link": "pico:#1", "ss": 1}],
+ "registers": [{"addr": "1-60", "width": 5},
+               {"addr": 13, "fields": [{"name": "reset", "lo": 0}, {"name": "FLL_en", "lo": 2}]},
+               {"addr": "111-116", "width": 13, "ro": true}],
+ "watches": [{"name": "MY_BUS", "range": "A15[1:0], A14[4:3]"}]}
+```
+
+Code layout: `spi_model.py` (profiles, values, operations; no Qt), `spi_links.py` (NI / Pico /
+simulator), `spi_widgets.py` and `spi_panels.py` (GUI). Tests: `python -m unittest discover tests`.
+
 ## Usage
 
 Detailed usage may see the following file. Although it is a little bit outdated,
